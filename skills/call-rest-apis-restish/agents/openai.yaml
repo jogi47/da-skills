@@ -1,0 +1,6 @@
+interface:
+  display_name: "Call REST APIs With Restish"
+  short_description: "Configure and call REST APIs from CLI"
+  default_prompt: "Use $call-rest-apis-restish to configure and test this REST API."
+policy:
+  allow_implicit_invocation: true

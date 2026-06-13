@@ -1,0 +1,6 @@
+interface:
+  display_name: "Query Data With sq"
+  short_description: "Query databases and data files with sq"
+  default_prompt: "Use $query-data-sq to inspect and query this data source."
+policy:
+  allow_implicit_invocation: true

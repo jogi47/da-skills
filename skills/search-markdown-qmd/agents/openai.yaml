@@ -1,0 +1,6 @@
+interface:
+  display_name: "Search Markdown With QMD"
+  short_description: "Search Markdown notes and docs with QMD"
+  default_prompt: "Use $search-markdown-qmd to search my Markdown docs for the relevant context."
+policy:
+  allow_implicit_invocation: true
