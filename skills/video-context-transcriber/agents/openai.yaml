@@ -1,0 +1,4 @@
+interface:
+  display_name: "Video Context Transcriber"
+  short_description: "Self-contained transcript and frame context"
+  default_prompt: "Use $video-context-transcriber to transcribe this local media file, or sample frames if it has no audio, and create LLM-ready context."
