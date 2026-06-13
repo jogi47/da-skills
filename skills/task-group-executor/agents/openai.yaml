@@ -1,0 +1,6 @@
+interface:
+  display_name: "Task Group Executor"
+  short_description: "Execute and coordinate task-group plans"
+  default_prompt: "Use $task-group-executor to resume and coordinate work from these task-group artifacts."
+policy:
+  allow_implicit_invocation: true

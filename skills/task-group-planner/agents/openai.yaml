@@ -1,0 +1,6 @@
+interface:
+  display_name: "Task Group Planner"
+  short_description: "Create verified task-group planning artifacts"
+  default_prompt: "Use $task-group-planner to create verified task-group plan, progress, and scratchpad files."
+policy:
+  allow_implicit_invocation: true
