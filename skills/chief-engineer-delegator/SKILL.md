@@ -20,7 +20,7 @@ For reusable prompts and scratchpad templates, see [reference/templates.md](refe
 - Require workers to follow repo instructions, including plan-doc and verification rules.
 - Prefer small, low-risk slices with explicit file/test/doc ownership.
 - Maintain one durable scratchpad per mission; treat it as source of truth for worker ownership, state, decisions, and next chief actions.
-- Reuse an idle owned worker before creating a new one.
+- Prefer a new worker for a new task or different context to reduce context pollution. Reuse only when continuity clearly helps.
 - On every coordination turn, drain ready chief actions as far as possible before ending.
 
 ## Startup
@@ -55,11 +55,11 @@ Before assigning work:
 
 1. Read scratchpad worker pool.
 2. Use `list_threads`/`read_thread` only as needed to confirm status.
-3. Reuse an `idle` owned worker.
+3. Prefer creating a new worker for a different task, code area, investigation, or decision context.
 4. Do not assign new work to `planning`, `working`, `needs-review`, `held`, or unresolved `blocked` workers.
-5. Create one new local same-checkout worker only when no owned worker is free, or conversation isolation is needed.
+5. Reuse an `idle` owned worker only when the next task shares the same context and prior worker memory is useful.
 6. Ask the user before adopting unclear external worker threads.
-7. Send a fresh-task boundary prompt when reusing an idle worker.
+7. Send a fresh-task boundary prompt when reusing an idle worker, explicitly naming what prior context remains relevant and what should be ignored.
 
 Worker states: `idle`, `planning`, `working`, `needs-review`, `held`, `blocked`, `archived`.
 
