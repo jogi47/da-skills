@@ -28,7 +28,7 @@ Use this skill only when the user explicitly asks to skip commit hooks.
 - Keep optional footer lines at 100 characters or fewer.
 - Prefer a specific subject that names the behavior or module changed.
 - Avoid vague subjects like `update files`, `make changes`, `misc`, or `wip`.
-- If staged changes span unrelated concerns, stop and report that separate commits are needed.
+- If staged changes span unrelated concerns, do not block the commit. Use a broader but accurate subject, or add a body that names the separate concerns.
 - Add a body when the diff has multiple related changes or the reason is not obvious.
 - In the body, explain what changed and why; do not restate file names mechanically.
 
