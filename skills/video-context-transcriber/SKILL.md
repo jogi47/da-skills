@@ -1,6 +1,6 @@
 ---
 name: video-context-transcriber
-description: Transcribe local video/audio files or sample silent video frames into LLM-ready context bundles. Use when the user provides a local media path and wants transcript context, timestamped caption frames, or visual frame context for videos with little/no audio. Self-contained: no separate local project required.
+description: "Transcribe local video/audio files or sample silent video frames into LLM-ready context bundles. Use when the user provides a local media path and wants transcript context, timestamped caption frames, or visual frame context for videos with little/no audio. Self-contained: no separate local project required."
 ---
 
 # Video Context Transcriber
