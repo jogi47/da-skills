@@ -14,32 +14,33 @@ Use this skill to turn a local video path into a bundle that an LLM can inspect:
 - `segment_images/manifest.json`, mapping frames to timestamps and caption/visual text
 - `llm_context.md`, pairing each caption or visual sample with its extracted frame
 
-Prefer the bundled wrapper script so output paths and the LLM context file stay consistent. If the input has video but no audio stream, the wrapper automatically skips transcription and samples frames for visual context.
+Prefer the wrapper script bundled beside this `SKILL.md` so output paths and the LLM context file stay consistent. Do not hardcode `.codex`, `.agents`, or repo-root paths. If the input has video but no audio stream, the wrapper automatically skips transcription and samples frames for visual context.
 
 ## Workflow
 
 1. Verify the user supplied a local video or audio file path.
-2. Run:
+2. Resolve the installed skill directory: use the directory containing this `SKILL.md`; the script is `scripts/transcribe_video_context.py` inside it.
+3. Run:
 
    ```bash
-   python3 skills/video-context-transcriber/scripts/transcribe_video_context.py /absolute/path/to/video.mp4
+   python3 /path/to/video-context-transcriber/scripts/transcribe_video_context.py /absolute/path/to/video.mp4
    ```
 
-3. If the user provides domain vocabulary, pass it through:
+4. If the user provides domain vocabulary, pass it through:
 
    ```bash
-   python3 skills/video-context-transcriber/scripts/transcribe_video_context.py /absolute/path/to/video.mp4 --initial-prompt "PostgreSQL, pgvector, LangChain"
+   python3 /path/to/video-context-transcriber/scripts/transcribe_video_context.py /absolute/path/to/video.mp4 --initial-prompt "PostgreSQL, pgvector, LangChain"
    ```
 
-4. If the user wants visual context even when audio exists, add `--visual-only`.
-5. For silent videos, choose sampling density by context need:
+5. If the user wants visual context even when audio exists, add `--visual-only`.
+6. For silent videos, choose sampling density by context need:
    - `--visual-detail high` for UI walkthroughs, slides, dashboards, code demos, or dense screen recordings.
    - `--visual-detail medium` for normal demos.
    - `--visual-detail low` for long/slow videos.
    - Use `--visual-frame-interval <seconds>` and `--visual-max-frames <n>` when the user asks for more/less granular frames.
-6. If output files already exist and the user wants regeneration, add `--overwrite`.
-7. Read `llm_context.md` first. Use `segment_images/manifest.json` when exact timestamps, image filenames, or caption mappings matter.
-8. When answering about visual content, inspect the referenced frame images for the relevant segments instead of relying only on transcript text. For silent videos, inspect frames directly because placeholder text only marks sampled intervals.
+7. If output files already exist and the user wants regeneration, add `--overwrite`.
+8. Read `llm_context.md` first. Use `segment_images/manifest.json` when exact timestamps, image filenames, or caption mappings matter.
+9. When answering about visual content, inspect the referenced frame images for the relevant segments instead of relying only on transcript text. For silent videos, inspect frames directly because placeholder text only marks sampled intervals.
 
 ## Options
 
