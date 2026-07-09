@@ -20,7 +20,19 @@ Restart Codex after installing.
 
 ## Update
 
-Update these global skills:
+Update one global skill by name:
+
+```sh
+npx skills update video-context-transcriber --global --yes
+```
+
+Update one project skill by name:
+
+```sh
+npx skills update video-context-transcriber --project --yes
+```
+
+Update all global skills from this repo:
 
 ```sh
 npx skills update --global --yes \
@@ -38,7 +50,7 @@ npx skills update --global --yes \
   chief-engineer-delegator
 ```
 
-Update these project skills:
+Update all project skills from this repo:
 
 ```sh
 npx skills update --project --yes \
@@ -60,7 +72,19 @@ Restart Codex after updating.
 
 ## Install One Skill
 
-Replace `git-commit` with the skill folder name:
+Install `video-context-transcriber` globally:
+
+```sh
+npx skills add jogi47/da-skills --skill video-context-transcriber --agent codex --global --yes
+```
+
+Install `video-context-transcriber` into the current project:
+
+```sh
+npx skills add jogi47/da-skills --skill video-context-transcriber --agent codex --yes
+```
+
+Example with another skill:
 
 ```sh
 npx skills add jogi47/da-skills --skill git-commit --agent codex --global --yes
