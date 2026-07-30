@@ -26,6 +26,12 @@ Prefer the wrapper script bundled beside this `SKILL.md` so output paths and the
    python3 /path/to/video-context-transcriber/scripts/transcribe_video_context.py /absolute/path/to/video.mp4
    ```
 
+   On a new machine, diagnose prerequisites first:
+
+   ```bash
+   python3 /path/to/video-context-transcriber/scripts/transcribe_video_context.py --doctor
+   ```
+
 4. If the user provides domain vocabulary, pass it through:
 
    ```bash
@@ -44,10 +50,11 @@ Prefer the wrapper script bundled beside this `SKILL.md` so output paths and the
 
 ## Options
 
-- `--output-dir`: write the context bundle to a specific directory. Default is beside the source video as `<video-stem>_llm_context`.
+- `--output-dir`: write elsewhere. By default, create `<video-stem>_llm_context` in the source video's folder.
 - `--model`: Whisper model name or local model path. Default is `small`.
 - `--language`: optional language code such as `en`, `hi`, or `fr`.
 - `--initial-prompt`: vocabulary or phrase hints for better transcription.
+- `--no-vad-filter`: disable the default voice activity detection filter.
 - `--device`: faster-whisper device. Default is `cpu`.
 - `--compute-type`: faster-whisper compute type. Default is `int8`.
 - `--download-root`: optional model cache directory.
@@ -57,16 +64,21 @@ Prefer the wrapper script bundled beside this `SKILL.md` so output paths and the
 - `--visual-frame-interval`: seconds between sampled frames. Overrides `--visual-detail`.
 - `--visual-max-frames`: maximum sampled frames. Overrides the detail default.
 - `--no-auto-install`: fail instead of creating the managed Python dependency environment.
+- `--doctor`: report platform, Python, FFmpeg, cache, and environment readiness.
 
 ## Dependencies
 
-- Python 3 must be available to run the wrapper.
+- Python 3.9+ with `venv` and `pip` must be available.
 - `ffmpeg` must be on `PATH` for frame extraction.
 - `ffprobe` must be on `PATH` for audio/video stream detection.
-- `uv` is not required.
+- If `uv` is available, use it for faster environment creation and dependency installation. Otherwise, fall back to standard `venv` and `pip`; `uv` remains optional.
 - No external media-transcription repo is required.
-- For transcription, the first run creates a managed Python env at `~/.cache/video-context-transcriber/venv` and installs `faster-whisper`.
-- The first run for each Whisper model downloads it to `~/.cache/video-context-transcriber/models` unless `--download-root` is set. Later runs reuse the cache.
+- For transcription, the first run creates an isolated, Python/dependency-versioned environment and installs the exact version in `scripts/requirements.txt`. Concurrent runs share an install lock.
+- Cache locations follow OS conventions: `~/Library/Caches` on macOS, `%LOCALAPPDATA%` on Windows, and `$XDG_CACHE_HOME` or `~/.cache` on Linux. Set `VIDEO_CONTEXT_TRANSCRIBER_CACHE` to override.
+- The first run for each Whisper model downloads it to the cache `models` directory unless `--download-root` is set. Later runs reuse it.
+- CPU `int8` is the portable default. NVIDIA GPU mode additionally requires compatible CUDA and cuDNN libraries.
+- Voice activity detection is enabled by default to avoid transcribing long silent regions.
+- Target maintained Windows, macOS, and Linux releases where `faster-whisper`/CTranslate2 provide binary wheels. Run `--doctor` after moving machines.
 
 ## Output Handling
 

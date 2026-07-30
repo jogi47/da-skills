@@ -2,28 +2,79 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
+import platform
 import shutil
 import subprocess
 import sys
+import time
 import venv
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
-CACHE_DIR = Path.home() / ".cache" / "video-context-transcriber"
-VENV_DIR = CACHE_DIR / "venv"
+SCRIPT_DIR = Path(__file__).resolve().parent
+REQUIREMENTS_FILE = SCRIPT_DIR / "requirements.txt"
+MIN_PYTHON = (3, 9)
+
+
+def default_cache_dir() -> Path:
+    override = os.environ.get("VIDEO_CONTEXT_TRANSCRIBER_CACHE")
+    if override:
+        return Path(override).expanduser()
+    if os.name == "nt":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        return base / "video-context-transcriber"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "video-context-transcriber"
+    base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return base / "video-context-transcriber"
+
+
+CACHE_DIR = default_cache_dir()
+REQUIREMENTS_HASH = hashlib.sha256(REQUIREMENTS_FILE.read_bytes()).hexdigest()[:12]
+VENV_DIR = CACHE_DIR / "envs" / f"py{sys.version_info.major}{sys.version_info.minor}-{REQUIREMENTS_HASH}"
 MODEL_DIR = CACHE_DIR / "models"
-REQUIREMENTS = ["faster-whisper>=1.1.0,<2"]
+REQUIREMENTS = [
+    line.strip()
+    for line in REQUIREMENTS_FILE.read_text(encoding="utf-8").splitlines()
+    if line.strip() and not line.lstrip().startswith("#")
+]
+FASTER_WHISPER_VERSION = next(
+    requirement.split("==", 1)[1]
+    for requirement in REQUIREMENTS
+    if requirement.startswith("faster-whisper==")
+)
+
+
+class ManagedRunComplete(Exception):
+    def __init__(self, returncode: int):
+        self.returncode = returncode
+
+
+def positive_float(value: str) -> float:
+    number = float(value)
+    if number <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return number
+
+
+def positive_int(value: str) -> int:
+    number = int(value)
+    if number <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return number
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Create an LLM-ready transcript/frame context bundle from local media."
     )
-    parser.add_argument("video_path", help="Local video or audio path.")
+    parser.add_argument("video_path", nargs="?", help="Local video or audio path.")
     parser.add_argument(
         "--output-dir",
         help="Directory for transcript, segment images, manifest, and llm_context.md.",
@@ -31,6 +82,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", default="small", help="Whisper model name or local model path.")
     parser.add_argument("--language", help="Optional language code such as en, hi, or fr.")
     parser.add_argument("--initial-prompt", help="Vocabulary hints for Whisper.")
+    parser.add_argument(
+        "--no-vad-filter",
+        action="store_true",
+        help="Disable voice activity detection filtering.",
+    )
     parser.add_argument("--device", default="cpu", help="faster-whisper device. Default: cpu.")
     parser.add_argument("--compute-type", default="int8", help="faster-whisper compute type.")
     parser.add_argument(
@@ -46,12 +102,19 @@ def parse_args() -> argparse.Namespace:
         default="medium",
         help="Frame sampling density for silent/visual-only video.",
     )
-    parser.add_argument("--visual-frame-interval", type=float, help="Seconds between sampled frames.")
-    parser.add_argument("--visual-max-frames", type=int, help="Maximum sampled frames.")
+    parser.add_argument(
+        "--visual-frame-interval", type=positive_float, help="Seconds between sampled frames."
+    )
+    parser.add_argument("--visual-max-frames", type=positive_int, help="Maximum sampled frames.")
     parser.add_argument(
         "--no-auto-install",
         action="store_true",
         help="Fail instead of creating a managed venv and installing Python dependencies.",
+    )
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Print platform and dependency diagnostics without processing media.",
     )
     return parser.parse_args()
 
@@ -81,7 +144,13 @@ def venv_has_faster_whisper(python_path: Path) -> bool:
     if not python_path.exists():
         return False
     completed = subprocess.run(
-        [str(python_path), "-c", "import faster_whisper"],
+        [
+            str(python_path),
+            "-c",
+            "import importlib.metadata; "
+            f"raise SystemExit(importlib.metadata.version('faster-whisper') != "
+            f"{FASTER_WHISPER_VERSION!r})",
+        ],
         check=False,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -89,44 +158,165 @@ def venv_has_faster_whisper(python_path: Path) -> bool:
     return completed.returncode == 0
 
 
-def ensure_media_tools() -> str | None:
-    if shutil.which("ffmpeg") is None:
-        return "ffmpeg is required for frame extraction but was not found on PATH"
-    if shutil.which("ffprobe") is None:
-        return "ffprobe is required for media inspection but was not found on PATH"
+def media_tool_error() -> str | None:
+    missing = [name for name in ("ffmpeg", "ffprobe") if shutil.which(name) is None]
+    if not missing:
+        return None
+    install_hint = {
+        "Darwin": "Install with: brew install ffmpeg",
+        "Windows": "Install with: winget install Gyan.FFmpeg",
+        "Linux": "Install with your package manager, e.g. apt install ffmpeg",
+    }.get(platform.system(), "Install FFmpeg and put ffmpeg and ffprobe on PATH")
+    return f"missing required command(s): {', '.join(missing)}. {install_hint}"
+
+
+def python_error() -> str | None:
+    if sys.version_info[:2] < MIN_PYTHON:
+        required = ".".join(map(str, MIN_PYTHON))
+        return f"Python {required}+ is required; found {platform.python_version()}"
     return None
 
 
-def ensure_faster_whisper(args: argparse.Namespace) -> Any:
-    try:
-        from faster_whisper import WhisperModel
+def diagnostics() -> dict[str, Any]:
+    python_issue = python_error()
+    media_issue = media_tool_error()
+    uv_path = shutil.which("uv")
+    return {
+        "ok": not python_issue and not media_issue,
+        "platform": platform.platform(),
+        "architecture": platform.machine(),
+        "python": platform.python_version(),
+        "python_ok": python_issue is None,
+        "ffmpeg": shutil.which("ffmpeg"),
+        "ffprobe": shutil.which("ffprobe"),
+        "uv": uv_path,
+        "dependency_installer": "uv" if uv_path else "venv+pip",
+        "cache_dir": str(CACHE_DIR),
+        "python_env": str(VENV_DIR),
+        "managed_environment_ready": venv_has_faster_whisper(venv_python()),
+        "requirements": REQUIREMENTS,
+        "issues": [issue for issue in (python_issue, media_issue) if issue],
+    }
 
-        return WhisperModel
-    except ImportError:
-        pass
 
-    if args.no_auto_install:
-        raise RuntimeError("faster-whisper not installed; rerun without --no-auto-install")
+@contextmanager
+def environment_lock() -> Iterator[None]:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    lock_path = CACHE_DIR / "environment.lock"
+    with lock_path.open("a+b") as lock_file:
+        if os.name == "nt":
+            import msvcrt
 
+            lock_file.seek(0)
+            lock_file.write(b"\0")
+            lock_file.flush()
+            deadline = time.monotonic() + 600
+            while True:
+                try:
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError("timed out waiting for dependency installation")
+                    time.sleep(0.25)
+        else:
+            import fcntl
+
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def prepare_managed_environment() -> Path:
     python_path = venv_python()
-    if Path(sys.executable).resolve() != python_path.resolve():
+    with environment_lock():
+        uv_path = shutil.which("uv")
         if not python_path.exists():
             VENV_DIR.parent.mkdir(parents=True, exist_ok=True)
-            venv.EnvBuilder(with_pip=True).create(VENV_DIR)
+            if uv_path:
+                subprocess.run(
+                    [
+                        uv_path,
+                        "venv",
+                        "--python",
+                        sys.executable,
+                        str(VENV_DIR),
+                    ],
+                    check=True,
+                )
+            else:
+                venv.EnvBuilder(with_pip=True).create(VENV_DIR)
         if not venv_has_faster_whisper(python_path):
-            subprocess.run(
-                [str(python_path), "-m", "pip", "install", "--upgrade", "pip"],
-                check=True,
-            )
-            subprocess.run(
-                [str(python_path), "-m", "pip", "install", *REQUIREMENTS],
-                check=True,
-            )
-        os.execv(str(python_path), [str(python_path), str(Path(__file__).resolve()), *sys.argv[1:]])
+            if uv_path:
+                subprocess.run(
+                    [
+                        uv_path,
+                        "pip",
+                        "install",
+                        "--python",
+                        str(python_path),
+                        "-r",
+                        str(REQUIREMENTS_FILE),
+                    ],
+                    check=True,
+                )
+            else:
+                subprocess.run(
+                    [str(python_path), "-m", "ensurepip", "--upgrade"],
+                    check=True,
+                )
+                subprocess.run(
+                    [
+                        str(python_path),
+                        "-m",
+                        "pip",
+                        "--disable-pip-version-check",
+                        "install",
+                        "--upgrade",
+                        "pip>=23.3",
+                    ],
+                    check=True,
+                )
+                subprocess.run(
+                    [
+                        str(python_path),
+                        "-m",
+                        "pip",
+                        "--disable-pip-version-check",
+                        "install",
+                        "--prefer-binary",
+                        "-r",
+                        str(REQUIREMENTS_FILE),
+                    ],
+                    check=True,
+                )
+    return python_path
 
-    subprocess.run([sys.executable, "-m", "pip", "install", *REQUIREMENTS], check=True)
-    from faster_whisper import WhisperModel
 
+def ensure_faster_whisper(args: argparse.Namespace) -> Any:
+    python_path = venv_python()
+    if Path(sys.executable).resolve() != python_path.resolve():
+        if args.no_auto_install and not venv_has_faster_whisper(python_path):
+            raise RuntimeError(
+                f"managed dependency environment is not ready: {VENV_DIR}; "
+                "rerun without --no-auto-install"
+            )
+        if not args.no_auto_install:
+            prepare_managed_environment()
+        completed = subprocess.run([str(python_path), str(Path(__file__).resolve()), *sys.argv[1:]])
+        raise ManagedRunComplete(completed.returncode)
+
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError as exc:
+        raise RuntimeError(f"managed environment is corrupt: {VENV_DIR}") from exc
     return WhisperModel
 
 
@@ -208,10 +398,12 @@ def extract_frame(video_path: Path, image_path: Path, capture_time: float, overw
     command = [
         "ffmpeg",
         "-y" if overwrite else "-n",
-        "-i",
-        str(video_path),
         "-ss",
         f"{capture_time:.3f}",
+        "-i",
+        str(video_path),
+        "-map",
+        "0:v:0",
         "-frames:v",
         "1",
         "-q:v",
@@ -302,6 +494,7 @@ def transcribe_media(
         str(video_path),
         language=args.language,
         initial_prompt=args.initial_prompt,
+        vad_filter=not args.no_vad_filter,
     )
     segments = list(segments_iter)
     if not segments and media.get("has_video"):
@@ -411,11 +604,23 @@ def write_llm_context(video_path: Path, output_dir: Path) -> dict[str, Any]:
         "segment_count": len(images),
         "model_cache": str(Path(MODEL_DIR).expanduser()),
         "python_env": str(VENV_DIR),
+        "dependency_installer": "uv" if shutil.which("uv") else "venv+pip",
     }
 
 
 def main() -> int:
     args = parse_args()
+    if args.doctor:
+        result = diagnostics()
+        print(json.dumps(result, indent=2))
+        return 0 if result["ok"] else 1
+    if not args.video_path:
+        return fail("video_path is required unless --doctor is used")
+
+    dependency_error = python_error() or media_tool_error()
+    if dependency_error:
+        return fail(dependency_error)
+
     video_path = Path(args.video_path).expanduser().resolve()
 
     if not video_path.exists():
@@ -423,16 +628,12 @@ def main() -> int:
     if not video_path.is_file():
         return fail(f"path is not a file: {video_path}")
 
-    dependency_error = ensure_media_tools()
-    if dependency_error:
-        return fail(dependency_error)
-
     output_dir = (
         Path(args.output_dir).expanduser().resolve() if args.output_dir else default_output_dir(video_path)
     )
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
+        output_dir.mkdir(parents=True, exist_ok=True)
         check_existing(output_dir, args.overwrite)
         media = probe_media(video_path)
         if args.visual_only or (media["has_video"] and not media["has_audio"]):
@@ -447,8 +648,12 @@ def main() -> int:
         return fail(f"invalid JSON output: {exc}")
     except RuntimeError as exc:
         return fail(str(exc))
+    except ManagedRunComplete as exc:
+        return exc.returncode
     except subprocess.CalledProcessError as exc:
         return fail(f"dependency setup failed: {exc}")
+    except OSError as exc:
+        return fail(f"filesystem or process error: {exc}")
 
     print(json.dumps(summary, indent=2))
     return 0
