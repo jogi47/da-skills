@@ -1,0 +1,1 @@
+Can you run this app in background bash? You can find instruction in CLAUDE.md file to run the project.

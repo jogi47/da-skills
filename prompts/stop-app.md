@@ -1,0 +1,1 @@
+Can you STOP this app in background bash?
