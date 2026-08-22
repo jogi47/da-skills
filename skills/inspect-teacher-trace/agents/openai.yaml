@@ -1,0 +1,4 @@
+interface:
+  display_name: "Inspect Teacher Trace"
+  short_description: "Diagnose teacher-helper telemetry runs"
+  default_prompt: "Use $inspect-teacher-trace to inspect this telemetry run and report evidence-backed findings."
