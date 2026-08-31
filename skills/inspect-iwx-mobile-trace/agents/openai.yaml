@@ -1,0 +1,4 @@
+interface:
+  display_name: "Inspect IWX Mobile Trace"
+  short_description: "Investigate iwx-mobile-tracer run folders"
+  default_prompt: "Use $inspect-iwx-mobile-trace to investigate this run folder and explain the evidence."
