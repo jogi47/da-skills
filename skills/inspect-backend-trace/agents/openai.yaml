@@ -1,0 +1,4 @@
+interface:
+  display_name: "Inspect Backend Trace"
+  short_description: "Investigate backend tracer run directories"
+  default_prompt: "Use $inspect-backend-trace to investigate this tracer run directory and explain the evidence."
