@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import bisect
+import datetime as dt
 import hashlib
 import json
 import math
@@ -10,12 +12,14 @@ import platform
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import venv
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Iterator
-
+from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REQUIREMENTS_FILE = SCRIPT_DIR / "requirements.txt"
@@ -39,6 +43,7 @@ CACHE_DIR = default_cache_dir()
 REQUIREMENTS_HASH = hashlib.sha256(REQUIREMENTS_FILE.read_bytes()).hexdigest()[:12]
 VENV_DIR = CACHE_DIR / "envs" / f"py{sys.version_info.major}{sys.version_info.minor}-{REQUIREMENTS_HASH}"
 MODEL_DIR = CACHE_DIR / "models"
+MANAGED_CHILD_ENV = "VIDEO_CONTEXT_TRANSCRIBER_MANAGED_CHILD"
 REQUIREMENTS = [
     line.strip()
     for line in REQUIREMENTS_FILE.read_text(encoding="utf-8").splitlines()
@@ -50,10 +55,53 @@ FASTER_WHISPER_VERSION = next(
     if requirement.startswith("faster-whisper==")
 )
 
+# (minimum seconds between frames, maximum frames) for silent / visual-only sampling.
+# "medium" matches the video-to-md CLI: up to 20 frames, roughly five seconds apart.
+VISUAL_DETAIL_SAMPLING = {
+    "low": (10.0, 10),
+    "medium": (5.0, 20),
+    "high": (1.0, 240),
+}
+
 
 class ManagedRunComplete(Exception):
     def __init__(self, returncode: int):
         self.returncode = returncode
+
+
+@dataclass
+class TranscriptSegment:
+    start: float
+    end: float
+    text: str
+
+
+@dataclass
+class TranscriptionResult:
+    model_name: str
+    language: str | None
+    language_probability: float | None
+    duration_seconds: float | None
+    segments: list[TranscriptSegment]
+
+
+@dataclass
+class SegmentImage:
+    index: int
+    start: float
+    end: float
+    capture_time: float
+    text: str
+    filename: str
+
+
+@dataclass
+class OutputPaths:
+    output_dir: Path
+    transcript: Path
+    images_dir: Path
+    manifest: Path
+    llm_context: Path
 
 
 def positive_float(value: str) -> float:
@@ -70,14 +118,15 @@ def positive_int(value: str) -> int:
     return number
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Create an LLM-ready transcript/frame context bundle from local media."
     )
     parser.add_argument("video_path", nargs="?", help="Local video or audio path.")
     parser.add_argument(
         "--output-dir",
-        help="Directory for transcript, segment images, manifest, and llm_context.md.",
+        help="Directory for <stem>.md, <stem>_images/ and <stem>_llm_context.md. "
+        "Default: the source file's folder.",
     )
     parser.add_argument("--model", default="small", help="Whisper model name or local model path.")
     parser.add_argument("--language", help="Optional language code such as en, hi, or fr.")
@@ -89,6 +138,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--device", default="cpu", help="faster-whisper device. Default: cpu.")
     parser.add_argument("--compute-type", default="int8", help="faster-whisper compute type.")
+    decoding_group = parser.add_mutually_exclusive_group()
+    decoding_group.add_argument(
+        "--beam-size",
+        type=positive_int,
+        default=5,
+        help="Beam size used during decoding. Default: 5.",
+    )
+    decoding_group.add_argument(
+        "--fast",
+        action="store_true",
+        help="Use faster greedy decoding (equivalent to --beam-size 1).",
+    )
     parser.add_argument(
         "--download-root",
         default=str(MODEL_DIR),
@@ -98,12 +159,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--visual-only", action="store_true", help="Skip transcription; sample frames.")
     parser.add_argument(
         "--visual-detail",
-        choices=["low", "medium", "high"],
+        choices=sorted(VISUAL_DETAIL_SAMPLING),
         default="medium",
-        help="Frame sampling density for silent/visual-only video.",
+        help="Frame sampling density for silent/visual-only video. Default: medium.",
     )
     parser.add_argument(
-        "--visual-frame-interval", type=positive_float, help="Seconds between sampled frames."
+        "--visual-frame-interval",
+        type=positive_float,
+        help="Minimum seconds between sampled frames.",
     )
     parser.add_argument("--visual-max-frames", type=positive_int, help="Maximum sampled frames.")
     parser.add_argument(
@@ -116,7 +179,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print platform and dependency diagnostics without processing media.",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def fail(message: str) -> int:
@@ -124,16 +187,36 @@ def fail(message: str) -> int:
     return 1
 
 
-def format_time(seconds: float) -> str:
-    total_ms = max(0, round(seconds * 1000))
-    hours, remainder = divmod(total_ms, 3_600_000)
+def log(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
+def format_timestamp(seconds: float) -> str:
+    total_milliseconds = max(0, round(seconds * 1000))
+    hours, remainder = divmod(total_milliseconds, 3_600_000)
     minutes, remainder = divmod(remainder, 60_000)
     whole_seconds, milliseconds = divmod(remainder, 1000)
     return f"{hours:02d}:{minutes:02d}:{whole_seconds:02d}.{milliseconds:03d}"
 
 
-def default_output_dir(video_path: Path) -> Path:
-    return video_path.with_name(f"{video_path.stem}_llm_context")
+def format_filename_timestamp(seconds: float) -> str:
+    return format_timestamp(seconds).replace(":", "-")
+
+
+def iso_now() -> str:
+    return dt.datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def resolve_output_paths(video_path: Path, output_dir_arg: str | None) -> OutputPaths:
+    output_dir = Path(output_dir_arg).expanduser().resolve() if output_dir_arg else video_path.parent
+    images_dir = output_dir / f"{video_path.stem}_images"
+    return OutputPaths(
+        output_dir=output_dir,
+        transcript=output_dir / f"{video_path.stem}.md",
+        images_dir=images_dir,
+        manifest=images_dir / "manifest.json",
+        llm_context=output_dir / f"{video_path.stem}_llm_context.md",
+    )
 
 
 def venv_python() -> Path:
@@ -300,9 +383,20 @@ def prepare_managed_environment() -> Path:
     return python_path
 
 
+def running_in_managed_environment() -> bool:
+    # Compare venv prefixes, not interpreter paths: a venv's bin/python is usually a symlink
+    # to the same base interpreter that launched this script, so resolved paths match.
+    try:
+        return Path(sys.prefix).resolve() == VENV_DIR.resolve()
+    except OSError:
+        return False
+
+
 def ensure_faster_whisper(args: argparse.Namespace) -> Any:
     python_path = venv_python()
-    if Path(sys.executable).resolve() != python_path.resolve():
+    if not running_in_managed_environment():
+        if os.environ.get(MANAGED_CHILD_ENV):
+            raise RuntimeError(f"managed environment did not activate: {VENV_DIR}")
         if args.no_auto_install and not venv_has_faster_whisper(python_path):
             raise RuntimeError(
                 f"managed dependency environment is not ready: {VENV_DIR}; "
@@ -310,9 +404,14 @@ def ensure_faster_whisper(args: argparse.Namespace) -> Any:
             )
         if not args.no_auto_install:
             prepare_managed_environment()
-        completed = subprocess.run([str(python_path), str(Path(__file__).resolve()), *sys.argv[1:]])
+        completed = subprocess.run(
+            [str(python_path), str(Path(__file__).resolve()), *sys.argv[1:]],
+            env={**os.environ, MANAGED_CHILD_ENV: "1"},
+        )
         raise ManagedRunComplete(completed.returncode)
 
+    # Xet downloads are less reliable on restricted networks; read at huggingface_hub import.
+    os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
     try:
         from faster_whisper import WhisperModel
     except ImportError as exc:
@@ -343,273 +442,555 @@ def probe_media(video_path: Path) -> dict[str, Any]:
     }
 
 
-def visual_sampling(duration: float, detail: str, interval: float | None, max_frames: int | None) -> tuple[float, int]:
-    default_max = {"low": 60, "medium": 120, "high": 240}[detail]
-    limit = max_frames or default_max
-    if interval and interval > 0:
-        return interval, limit
-    if detail == "high":
-        return 1.0, limit
-    if detail == "low":
-        return 10.0, limit
-    if duration <= 30:
-        return 2.0, limit
-    if duration <= 180:
-        return 5.0, limit
-    if duration <= 900:
-        return 10.0, limit
-    return max(10.0, duration / limit), limit
-
-
-def clean_outputs(output_dir: Path) -> None:
-    images_dir = output_dir / "segment_images"
-    for path in [
-        output_dir / "transcript.md",
-        output_dir / "llm_context.md",
-        images_dir / "manifest.json",
-    ]:
-        if path.exists():
-            path.unlink()
-    if images_dir.exists():
-        for image_path in images_dir.glob("*.png"):
-            image_path.unlink()
-
-
-def check_existing(output_dir: Path, overwrite: bool) -> None:
-    if overwrite:
-        clean_outputs(output_dir)
-        return
-    existing = [
-        output_dir / "transcript.md",
-        output_dir / "llm_context.md",
-        output_dir / "segment_images" / "manifest.json",
-    ]
-    if any(path.exists() for path in existing):
-        raise FileExistsError(f"outputs already exist in {output_dir}; use --overwrite")
-
-
-def run_ffmpeg(command: list[str], label: str) -> None:
-    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+def probe_video_frame_times(video_path: Path) -> list[float] | None:
+    ffprobe_path = shutil.which("ffprobe")
+    if ffprobe_path is None:
+        return None
+    completed = subprocess.run(
+        [
+            ffprobe_path,
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "packet=pts_time,flags",
+            "-of",
+            "csv=p=0",
+            str(video_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip() or label)
-
-
-def extract_frame(video_path: Path, image_path: Path, capture_time: float, overwrite: bool) -> bool:
-    command = [
-        "ffmpeg",
-        "-y" if overwrite else "-n",
-        "-ss",
-        f"{capture_time:.3f}",
-        "-i",
-        str(video_path),
-        "-map",
-        "0:v:0",
-        "-frames:v",
-        "1",
-        "-q:v",
-        "2",
-        str(image_path),
-    ]
-    run_ffmpeg(command, f"failed extracting frame at {format_time(capture_time)}")
-    return image_path.exists() and image_path.stat().st_size > 0
-
-
-def sample_visual_frames(
-    args: argparse.Namespace, video_path: Path, output_dir: Path, media: dict[str, Any]
-) -> dict[str, Any]:
-    transcript_path = output_dir / "transcript.md"
-    images_dir = output_dir / "segment_images"
-    manifest_path = images_dir / "manifest.json"
-    images_dir.mkdir(parents=True, exist_ok=True)
-
-    duration = max(float(media.get("duration") or 0), 0)
-    interval, max_frames = visual_sampling(
-        duration, args.visual_detail, args.visual_frame_interval, args.visual_max_frames
-    )
-    count = min(max_frames, max(1, math.ceil(duration / interval))) if duration > 0 else 1
-    output_pattern = images_dir / "visual_%04d.png"
-    fps = 1 / interval
-    command = [
-        "ffmpeg",
-        "-y" if args.overwrite else "-n",
-        "-i",
-        str(video_path),
-        "-vf",
-        f"fps={fps:.6f}",
-        "-frames:v",
-        str(count),
-        "-q:v",
-        "2",
-        str(output_pattern),
-    ]
-    run_ffmpeg(command, "failed extracting visual frames")
-
-    images: list[dict[str, Any]] = []
-    for index, image_path in enumerate(sorted(images_dir.glob("visual_*.png")), start=1):
-        if image_path.stat().st_size == 0:
+        return None
+    frame_times: set[float] = set()
+    for line in completed.stdout.splitlines():
+        pts_time, _, flags = line.partition(",")
+        if "D" in flags:
             continue
-        capture_time = min(duration, (index - 1) * interval) if duration > 0 else 0.0
-        start = max(0.0, capture_time - interval / 2)
-        end = min(duration, capture_time + interval / 2) if duration > 0 else capture_time
-        images.append(
-            {
-                "index": index,
-                "filename": image_path.name,
-                "start": start,
-                "end": end,
-                "capture_time": capture_time,
-                "text": "Silent/visual-only sample. Inspect this frame for visual context.",
-            }
+        try:
+            frame_times.add(float(pts_time))
+        except ValueError:
+            continue
+    return sorted(frame_times) or None
+
+
+def normalize_segments(segments: Iterable[object]) -> list[TranscriptSegment]:
+    normalized: list[TranscriptSegment] = []
+    for segment in segments:
+        text = str(getattr(segment, "text", "")).strip()
+        if not text:
+            continue
+        normalized.append(
+            TranscriptSegment(
+                start=float(getattr(segment, "start", 0.0)),
+                end=float(getattr(segment, "end", 0.0)),
+                text=text,
+            )
         )
-    if not images:
-        raise RuntimeError("no visual frames could be extracted")
-
-    transcript_path.write_text(
-        "\n".join(
-            [
-                f"# Transcript: {video_path.name}",
-                "",
-                "_No audio stream was detected, no speech was found, or visual-only mode was requested._",
-                "_Context was built from sampled video frames._",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    manifest_path.write_text(json.dumps({"images": images}, indent=2), encoding="utf-8")
-    return write_llm_context(video_path, output_dir)
+    return normalized
 
 
-def transcribe_media(
-    args: argparse.Namespace, video_path: Path, output_dir: Path, media: dict[str, Any]
-) -> dict[str, Any]:
+def transcribe_video(args: argparse.Namespace, video_path: Path) -> TranscriptionResult:
     WhisperModel = ensure_faster_whisper(args)
-    model = WhisperModel(
-        args.model,
-        device=args.device,
-        compute_type=args.compute_type,
-        download_root=str(Path(args.download_root).expanduser().resolve()),
-    )
-    segments_iter, info = model.transcribe(
-        str(video_path),
-        language=args.language,
-        initial_prompt=args.initial_prompt,
-        vad_filter=not args.no_vad_filter,
-    )
-    segments = list(segments_iter)
-    if not segments and media.get("has_video"):
-        return sample_visual_frames(args, video_path, output_dir, media)
+    log(f"Loading model '{args.model}'...")
+    try:
+        model = WhisperModel(
+            args.model,
+            device=args.device,
+            compute_type=args.compute_type,
+            download_root=str(Path(args.download_root).expanduser().resolve()),
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            "Unable to load the Whisper model. If this is the first run, check network access "
+            "for the model download."
+        ) from exc
 
-    transcript_path = output_dir / "transcript.md"
-    images_dir = output_dir / "segment_images"
-    manifest_path = images_dir / "manifest.json"
-    images_dir.mkdir(parents=True, exist_ok=True)
+    transcribe_kwargs: dict[str, Any] = {
+        "beam_size": 1 if args.fast else args.beam_size,
+        "vad_filter": not args.no_vad_filter,
+        "word_timestamps": False,
+    }
+    if args.initial_prompt:
+        transcribe_kwargs["initial_prompt"] = args.initial_prompt
+    if args.language:
+        transcribe_kwargs["language"] = args.language
 
-    transcript_lines = [
+    log(f"Transcribing '{video_path}'...")
+    try:
+        segments, info = model.transcribe(str(video_path), **transcribe_kwargs)
+        normalized_segments = normalize_segments(segments)
+    except Exception as exc:
+        raise RuntimeError(f"Transcription failed for '{video_path}'.") from exc
+    return TranscriptionResult(
+        model_name=args.model,
+        language=getattr(info, "language", None),
+        language_probability=getattr(info, "language_probability", None),
+        duration_seconds=getattr(info, "duration", None),
+        segments=normalized_segments,
+    )
+
+
+def render_markdown(
+    video_path: Path,
+    result: TranscriptionResult,
+    generated_at: str | None = None,
+) -> str:
+    generated_at = generated_at or iso_now()
+    lines: list[str] = [
         f"# Transcript: {video_path.name}",
         "",
-        f"- Language: `{getattr(info, 'language', args.language or 'auto')}`",
-        f"- Duration: `{format_time(float(getattr(info, 'duration', media.get('duration') or 0)))}`",
-        "",
+        f"- Source: `{video_path}`",
+        f"- Generated: `{generated_at}`",
+        f"- Model: `{result.model_name}`",
     ]
-    images: list[dict[str, Any]] = []
-    for index, segment in enumerate(segments, start=1):
-        start = float(segment.start)
-        end = float(segment.end)
-        text = str(segment.text).strip()
-        transcript_lines.extend(
-            [
-                f"## Segment {index:04d}",
-                "",
-                f"- Time: `{format_time(start)} - {format_time(end)}`",
-                "",
-                text,
-                "",
-            ]
+
+    if result.language:
+        lines.append(f"- Detected language: `{result.language}`")
+    if result.language_probability is not None:
+        lines.append(f"- Language probability: `{result.language_probability:.4f}`")
+    if result.duration_seconds is not None:
+        lines.append(
+            f"- Duration: `{format_timestamp(result.duration_seconds)}` "
+            f"({result.duration_seconds:.2f} seconds)"
         )
-        filename = None
-        capture_time = max(0.0, start + ((end - start) / 2))
-        if media.get("has_video"):
-            image_path = images_dir / f"segment_{index:04d}.png"
-            if extract_frame(video_path, image_path, capture_time, args.overwrite):
-                filename = image_path.name
+
+    lines.extend(["", "## Transcript", ""])
+
+    if not result.segments:
+        lines.append("_No speech segments were detected._")
+        lines.append("")
+        return "\n".join(lines)
+
+    for segment in result.segments:
+        lines.append(
+            f"**[{format_timestamp(segment.start)} - {format_timestamp(segment.end)}]** {segment.text}"
+        )
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def segment_capture_time(
+    segment: TranscriptSegment,
+    duration_seconds: float | None = None,
+) -> float:
+    start = max(segment.start, 0.0)
+    end = max(segment.end, start)
+    capture_time = start + ((end - start) / 2 if end > start else 0.0)
+    if duration_seconds is not None and duration_seconds > 0:
+        capture_time = min(capture_time, max(duration_seconds - 0.001, 0.0))
+    return capture_time
+
+
+def frame_select_time(capture_time: float, frame_times: list[float] | None) -> str:
+    if not frame_times:
+        return f"{capture_time:.3f}"
+    # Target the frame on screen at capture_time: the last frame at or before it. Variable
+    # frame rate recordings can go seconds without a new frame, and audio can outlast the
+    # video stream, so the first frame after capture_time may not exist.
+    frame_index = max(bisect.bisect_right(frame_times, capture_time) - 1, 0)
+    # Select from just below the frame's timestamp so float rounding cannot skip it.
+    return f"{frame_times[frame_index] - 0.0005:.6f}"
+
+
+def build_segment_images(
+    result: TranscriptionResult,
+    *,
+    image_suffix: str = ".png",
+) -> list[SegmentImage]:
+    images: list[SegmentImage] = []
+    for index, segment in enumerate(result.segments, start=1):
+        filename = (
+            f"{index:04d}_{format_filename_timestamp(segment.start)}"
+            f"_{format_filename_timestamp(segment.end)}{image_suffix}"
+        )
         images.append(
-            {
-                "index": index,
-                "filename": filename,
-                "start": start,
-                "end": end,
-                "capture_time": capture_time,
-                "text": text,
-            }
+            SegmentImage(
+                index=index,
+                start=segment.start,
+                end=segment.end,
+                capture_time=segment_capture_time(segment, result.duration_seconds),
+                text=segment.text,
+                filename=filename,
+            )
+        )
+    return images
+
+
+def build_interval_image_result(
+    duration_seconds: float,
+    *,
+    minimum_interval: float = 5.0,
+    maximum_images: int = 20,
+) -> TranscriptionResult:
+    if duration_seconds <= 0:
+        raise RuntimeError("Cannot sample images because the video duration is unavailable.")
+    image_count = min(
+        maximum_images,
+        max(1, math.ceil(duration_seconds / minimum_interval)),
+    )
+    interval = duration_seconds / image_count
+    segments = [
+        TranscriptSegment(
+            start=index * interval,
+            end=(index + 1) * interval,
+            text=f"Representative frame {index + 1} of {image_count}",
+        )
+        for index in range(image_count)
+    ]
+    return TranscriptionResult(
+        model_name="none",
+        language=None,
+        language_probability=None,
+        duration_seconds=duration_seconds,
+        segments=segments,
+    )
+
+
+def visual_sampling(args: argparse.Namespace) -> tuple[float, int]:
+    minimum_interval, maximum_images = VISUAL_DETAIL_SAMPLING[args.visual_detail]
+    return (
+        args.visual_frame_interval or minimum_interval,
+        args.visual_max_frames or maximum_images,
+    )
+
+
+def write_segment_images_manifest(
+    video_path: Path,
+    output_dir: Path,
+    images: list[SegmentImage],
+    *,
+    generated_at: str | None = None,
+) -> None:
+    payload = {
+        "source": str(video_path),
+        "generated_at": generated_at or iso_now(),
+        "images": [asdict(image) for image in images],
+    }
+    (output_dir / "manifest.json").write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
+def extract_segment_images(
+    video_path: Path,
+    result: TranscriptionResult,
+    output_dir: Path,
+    *,
+    overwrite: bool,
+    generated_at: str | None = None,
+    frame_times: list[float] | None = None,
+) -> list[SegmentImage]:
+    images = build_segment_images(result)
+    if output_dir.exists() and not output_dir.is_dir():
+        raise RuntimeError(f"segment image path is not a directory: {output_dir}")
+
+    manifest_path = output_dir / "manifest.json"
+    blocked_paths = [output_dir / image.filename for image in images]
+    blocked_paths.append(manifest_path)
+    existing_paths = [path for path in blocked_paths if path.exists()]
+    if existing_paths and not overwrite:
+        raise RuntimeError(
+            f"segment image output already exists: {existing_paths[0]} (use --overwrite)"
         )
 
-    transcript_path.write_text("\n".join(transcript_lines), encoding="utf-8")
-    manifest_path.write_text(json.dumps({"images": images}, indent=2), encoding="utf-8")
-    return write_llm_context(video_path, output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if not images:
+        write_segment_images_manifest(
+            video_path,
+            output_dir,
+            images,
+            generated_at=generated_at,
+        )
+        return images
+
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path is None:
+        raise RuntimeError(
+            "Companion image extraction requires 'ffmpeg' to be installed and available on PATH."
+        )
+
+    # One ffmpeg pass selects every capture time; a balanced max() tree keeps the select
+    # expression shallow however many segments there are.
+    select_times = {
+        image.index: frame_select_time(image.capture_time, frame_times) for image in images
+    }
+    capture_times = sorted(set(select_times.values()), key=float)
+    select_terms = []
+    for index, capture_time in enumerate(capture_times):
+        previous_check = (
+            "isnan(prev_selected_t)"
+            if index == 0
+            else f"lt(prev_selected_t\\,{capture_time})"
+        )
+        select_terms.append(f"gte(t\\,{capture_time})*{previous_check}")
+    while len(select_terms) > 1:
+        select_terms = [
+            (
+                f"max({select_terms[index]}\\,{select_terms[index + 1]})"
+                if index + 1 < len(select_terms)
+                else select_terms[index]
+            )
+            for index in range(0, len(select_terms), 2)
+        ]
+    select_expression = select_terms[0]
+
+    with tempfile.TemporaryDirectory(prefix=".video-to-md-", dir=output_dir) as temp_dir:
+        temp_path = Path(temp_dir)
+        frame_pattern = temp_path / "%04d.png"
+        command = [
+            ffmpeg_path,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(video_path),
+            "-map",
+            "0:v:0",
+            "-vf",
+            f"select={select_expression}",
+            "-fps_mode",
+            "vfr",
+            "-start_number",
+            "1",
+            str(frame_pattern),
+        ]
+        completed = subprocess.run(command, capture_output=True, text=True, check=False)
+        if completed.returncode != 0:
+            error_text = (completed.stderr or completed.stdout).strip()
+            if "matches no streams" in error_text or "Invalid input file index" in error_text:
+                raise RuntimeError(
+                    f"Cannot extract companion images from '{video_path}' because it has no video stream."
+                )
+            raise RuntimeError(
+                f"ffmpeg failed while extracting companion images: "
+                f"{error_text or 'unknown ffmpeg error'}"
+            )
+        extracted_frames = sorted(temp_path.glob("*.png"))
+        if len(extracted_frames) != len(capture_times):
+            raise RuntimeError(
+                f"ffmpeg extracted {len(extracted_frames)} of {len(capture_times)} companion images."
+            )
+        frames_by_time = dict(zip(capture_times, extracted_frames))
+        for image in images:
+            shutil.copyfile(
+                frames_by_time[select_times[image.index]],
+                output_dir / image.filename,
+            )
+
+    write_segment_images_manifest(
+        video_path,
+        output_dir,
+        images,
+        generated_at=generated_at,
+    )
+    return images
 
 
-def write_llm_context(video_path: Path, output_dir: Path) -> dict[str, Any]:
-    transcript_path = output_dir / "transcript.md"
-    images_dir = output_dir / "segment_images"
-    manifest_path = images_dir / "manifest.json"
-    context_path = output_dir / "llm_context.md"
+def validate_segment_images_preflight(output_dir: Path, *, overwrite: bool) -> None:
+    if output_dir.exists() and not output_dir.is_dir():
+        raise RuntimeError(f"segment image path is not a directory: {output_dir}")
+    if output_dir.exists() and not overwrite and any(output_dir.iterdir()):
+        raise RuntimeError(
+            f"segment image directory is not empty: {output_dir} (use --overwrite)"
+        )
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError(
+            "Companion image extraction requires 'ffmpeg' to be installed and available on PATH."
+        )
 
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    images = manifest.get("images", [])
+
+def paths_refer_to_same_file(first_path: Path, second_path: Path) -> bool:
+    if first_path == second_path:
+        return True
+    try:
+        return first_path.samefile(second_path)
+    except OSError:
+        return False
+
+
+def validate_outputs_preflight(
+    video_path: Path,
+    paths: OutputPaths,
+    *,
+    writes_transcript: bool,
+    writes_images: bool,
+    overwrite: bool,
+) -> None:
+    for path in (paths.transcript, paths.llm_context):
+        if paths_refer_to_same_file(video_path, path):
+            raise RuntimeError("output path must be different from the input media file")
+    if writes_transcript and paths.transcript.exists() and not overwrite:
+        raise RuntimeError(f"output file already exists: {paths.transcript} (use --overwrite)")
+    if paths.llm_context.exists() and not overwrite:
+        raise RuntimeError(f"output file already exists: {paths.llm_context} (use --overwrite)")
+    if writes_images:
+        validate_segment_images_preflight(paths.images_dir, overwrite=overwrite)
+
+
+def write_llm_context(
+    video_path: Path,
+    paths: OutputPaths,
+    images: list[SegmentImage],
+    *,
+    transcript_written: bool,
+    frames_written: bool,
+    note: str | None = None,
+) -> None:
     lines = [
         f"# Video Context: {video_path.name}",
         "",
         f"- Source: `{video_path}`",
-        f"- Transcript: `{transcript_path}`",
-        f"- Segment images: `{images_dir}`",
-        f"- Manifest: `{manifest_path}`",
+        f"- Transcript: `{paths.transcript}`" if transcript_written else "- Transcript: none",
+        f"- Segment images: `{paths.images_dir}`" if frames_written else "- Segment images: none",
+        f"- Manifest: `{paths.manifest}`" if frames_written else "- Manifest: none",
         f"- Segment count: `{len(images)}`",
         "",
-        "## Segments",
-        "",
     ]
+    if note:
+        lines.extend([note, ""])
+    lines.extend(["## Segments", ""])
 
     if not images:
         lines.extend(["_No segments were detected._", ""])
     for image in images:
-        index = int(image["index"])
-        start = format_time(float(image["start"]))
-        end = format_time(float(image["end"]))
-        capture_time = format_time(float(image["capture_time"]))
-        lines.extend([f"### Segment {index:04d}", ""])
-        if image.get("filename"):
-            image_path = images_dir / image["filename"]
-            lines.extend([f"![Segment {index:04d}]({image_path})", ""])
+        lines.extend([f"### Segment {image.index:04d}", ""])
+        if frames_written:
+            lines.extend([f"![Segment {image.index:04d}]({paths.images_dir / image.filename})", ""])
         else:
-            lines.extend(["_No frame available for this segment._", ""])
+            lines.extend(["_No frame available: the source has no video stream._", ""])
         lines.extend(
             [
-                f"- Time: `{start} - {end}`",
-                f"- Frame: `{capture_time}`",
+                f"- Time: `{format_timestamp(image.start)} - {format_timestamp(image.end)}`",
+                f"- Frame: `{format_timestamp(image.capture_time)}`",
                 "",
-                str(image["text"]).strip(),
+                image.text,
                 "",
             ]
         )
 
-    context_path.write_text("\n".join(lines), encoding="utf-8")
+    paths.llm_context.write_text("\n".join(lines), encoding="utf-8")
+
+
+def build_summary(
+    video_path: Path,
+    paths: OutputPaths,
+    *,
+    mode: str,
+    transcript_written: bool,
+    frames_written: bool,
+    segment_count: int,
+) -> dict[str, Any]:
     return {
         "video": str(video_path),
-        "output_dir": str(output_dir),
-        "transcript": str(transcript_path),
-        "images_dir": str(images_dir),
-        "manifest": str(manifest_path),
-        "llm_context": str(context_path),
-        "segment_count": len(images),
+        "mode": mode,
+        "output_dir": str(paths.output_dir),
+        "transcript": str(paths.transcript) if transcript_written else None,
+        "images_dir": str(paths.images_dir) if frames_written else None,
+        "manifest": str(paths.manifest) if frames_written else None,
+        "llm_context": str(paths.llm_context),
+        "segment_count": segment_count,
         "model_cache": str(Path(MODEL_DIR).expanduser()),
         "python_env": str(VENV_DIR),
         "dependency_installer": "uv" if shutil.which("uv") else "venv+pip",
     }
 
 
-def main() -> int:
-    args = parse_args()
+def process_media(
+    args: argparse.Namespace,
+    video_path: Path,
+    paths: OutputPaths,
+    media: dict[str, Any],
+) -> dict[str, Any]:
+    has_video = bool(media["has_video"])
+    visual_mode = bool(has_video and (args.visual_only or not media["has_audio"]))
+    validate_outputs_preflight(
+        video_path,
+        paths,
+        writes_transcript=not visual_mode,
+        writes_images=has_video,
+        overwrite=args.overwrite,
+    )
+    minimum_interval, maximum_images = visual_sampling(args)
+
+    note = None
+    if visual_mode:
+        mode = "visual"
+        transcript_written = False
+        generated_at = iso_now()
+        image_result = build_interval_image_result(
+            media["duration"],
+            minimum_interval=minimum_interval,
+            maximum_images=maximum_images,
+        )
+        note = (
+            "_No audio transcript: these are representative frames sampled across the video. "
+            "Inspect the images for context._"
+        )
+    else:
+        mode = "transcript"
+        result = transcribe_video(args, video_path)
+        generated_at = iso_now()
+        paths.output_dir.mkdir(parents=True, exist_ok=True)
+        # The transcript is persisted before image extraction, so a frame failure keeps it.
+        paths.transcript.write_text(
+            render_markdown(video_path, result, generated_at=generated_at),
+            encoding="utf-8",
+        )
+        transcript_written = True
+        log(f"Wrote markdown transcript to '{paths.transcript}'.")
+        image_result = result
+        if not result.segments and has_video:
+            mode = "no-speech-visual"
+            image_result = build_interval_image_result(
+                media["duration"] or (result.duration_seconds or 0.0),
+                minimum_interval=minimum_interval,
+                maximum_images=maximum_images,
+            )
+            note = (
+                "_No speech was detected: these are representative frames sampled across the "
+                "video. Inspect the images for context._"
+            )
+
+    if has_video:
+        images = extract_segment_images(
+            video_path,
+            image_result,
+            paths.images_dir,
+            overwrite=args.overwrite,
+            generated_at=generated_at,
+            frame_times=probe_video_frame_times(video_path),
+        )
+        log(f"Wrote {len(images)} companion image(s) to '{paths.images_dir}'.")
+    else:
+        images = build_segment_images(image_result)
+
+    write_llm_context(
+        video_path,
+        paths,
+        images,
+        transcript_written=transcript_written,
+        frames_written=has_video,
+        note=note,
+    )
+    return build_summary(
+        video_path,
+        paths,
+        mode=mode,
+        transcript_written=transcript_written,
+        frames_written=has_video,
+        segment_count=len(images),
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     if args.doctor:
         result = diagnostics()
         print(json.dumps(result, indent=2))
@@ -628,22 +1009,15 @@ def main() -> int:
     if not video_path.is_file():
         return fail(f"path is not a file: {video_path}")
 
-    output_dir = (
-        Path(args.output_dir).expanduser().resolve() if args.output_dir else default_output_dir(video_path)
-    )
+    paths = resolve_output_paths(video_path, args.output_dir)
 
     try:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        check_existing(output_dir, args.overwrite)
         media = probe_media(video_path)
-        if args.visual_only or (media["has_video"] and not media["has_audio"]):
-            summary = sample_visual_frames(args, video_path, output_dir, media)
-        elif media["has_audio"]:
-            summary = transcribe_media(args, video_path, output_dir, media)
-        else:
+        if not media["has_audio"] and not media["has_video"]:
             return fail("media has neither audio nor video streams")
-    except FileExistsError as exc:
-        return fail(str(exc))
+        if args.visual_only and not media["has_video"]:
+            return fail("--visual-only needs a video stream")
+        summary = process_media(args, video_path, paths, media)
     except json.JSONDecodeError as exc:
         return fail(f"invalid JSON output: {exc}")
     except RuntimeError as exc:
@@ -654,6 +1028,9 @@ def main() -> int:
         return fail(f"dependency setup failed: {exc}")
     except OSError as exc:
         return fail(f"filesystem or process error: {exc}")
+    except KeyboardInterrupt:
+        fail("interrupted")
+        return 130
 
     print(json.dumps(summary, indent=2))
     return 0
