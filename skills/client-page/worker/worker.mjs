@@ -13,6 +13,8 @@
 //        /apple-touch-icon.png
 //   GET  /_/f/<hash>/<name>              an image, video, audio file or PDF the owner uploaded (R2; Range-aware)
 //   GET  /admin                          the owner's dashboard (behind Cloudflare Access; see dashboard.mjs)
+//   POST /admin/api/pages/<id>/new-link  dashboard action: move the page to a new uuid (old link stops working)
+//   POST /admin/api/pages/<id>/delete    dashboard action: delete the page, its answers and files only it uses
 //   GET  /                               redirects a signed-in owner to /admin; everyone else gets the 404 page
 // Admin routes (Authorization: Bearer <ADMIN_TOKEN>) live under /_admin/pages and /_admin/files.
 // Only the owner can add files (through the admin API); visitors can never upload anything.
@@ -95,6 +97,7 @@ async function route(req, env) {
     return notFoundPage();
   }
   if (parts.length === 1 && parts[0] === "admin" && (method === "GET" || method === "HEAD")) return dashboard(req, env, url);
+  if (parts[0] === "admin" && parts[1] === "api") return dashboardApi(req, env, url, parts.slice(2));
   if (parts.length === 1 && parts[0] === "robots.txt") return text("User-agent: *\nDisallow: /\n");
   if (parts.length === 1 && parts[0] === "favicon.ico") return icon(PNG_32, "image/png");
   if (parts.length === 1 && (parts[0] === "apple-touch-icon.png" || parts[0] === "apple-touch-icon-precomposed.png")) {
@@ -166,6 +169,57 @@ function wrap(page) {
 }
 
 /* ---------------- Owner dashboard ---------------- */
+
+// Dashboard buttons. Same owner check as the dashboard itself, plus proof the request came from the
+// dashboard page: a same-site Origin and a custom header that other sites can't send without a preflight.
+async function dashboardApi(req, env, url, parts) {
+  const who = await verifyAccess(req, env);
+  if (!who) return notFoundPage();
+  if (req.method !== "POST") throw new HttpError(405, "method_not_allowed");
+  if (req.headers.get("x-cfdocs-admin") !== "1" || req.headers.get("origin") !== `${url.protocol}//${url.host}`) {
+    throw new HttpError(403, "forbidden", "This action can only be used from the dashboard.");
+  }
+  const [res, id, action] = parts;
+  if (res !== "pages" || !UUID_RE.test(id || "")) throw new HttpError(404, "not_found");
+  if (action === "delete") return json(await deletePage(env, id));
+  if (action === "new-link") return json(await newLink(env, url, id));
+  throw new HttpError(404, "not_found");
+}
+
+const FILE_REF_RE = /\/_\/f\/([0-9a-f]{12}\/[A-Za-z0-9._-]{1,120})/g;
+
+// Deletes a page for good: the page, its saved answers, and every uploaded file that no other page uses.
+async function deletePage(env, id) {
+  const page = await env.DB.prepare("SELECT id, html FROM pages WHERE id = ?").bind(id).first();
+  if (!page) throw new HttpError(404, "not_found", "That page doesn't exist.");
+  const { n } = await env.DB.prepare("SELECT COUNT(*) AS n FROM records WHERE page_id = ?").bind(id).first();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM records WHERE page_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM pages WHERE id = ?").bind(id),
+  ]);
+  let filesDeleted = 0, filesKept = 0;
+  if (env.FILES) {
+    const keys = new Set([...page.html.matchAll(FILE_REF_RE)].map(m => m[1]));
+    for (const key of keys) {
+      const used = await env.DB.prepare("SELECT 1 AS x FROM pages WHERE instr(html, ?) > 0 LIMIT 1").bind("/_/f/" + key).first();
+      if (used) { filesKept++; continue; }
+      await env.FILES.delete(key);
+      filesDeleted++;
+    }
+  }
+  return { ok: true, deleted: id, records: n, filesDeleted, filesKept };
+}
+
+// Gives a page a new uuid. The old link stops working at once; saved answers move with the page.
+async function newLink(env, url, id) {
+  const fresh = crypto.randomUUID();
+  const [moved] = await env.DB.batch([
+    env.DB.prepare("UPDATE pages SET id = ?, rev = rev + 1 WHERE id = ?").bind(fresh, id),
+    env.DB.prepare("UPDATE records SET page_id = ? WHERE page_id = ?").bind(fresh, id),
+  ]);
+  if (!moved.meta || !moved.meta.changes) throw new HttpError(404, "not_found", "That page doesn't exist.");
+  return { ok: true, old: id, id: fresh, url: pageUrl(url, fresh) };
+}
 
 async function dashboard(req, env, url) {
   const who = await verifyAccess(req, env);
@@ -370,8 +424,11 @@ async function admin(req, env, parts, url) {
       if (!r.meta || !r.meta.changes) throw new HttpError(404, "not_found");
       return json({ ok: true, id, url: pageUrl(url, id) });
     }
+    if (method === "DELETE") return json(await deletePage(env, id));
     throw new HttpError(405, "method_not_allowed");
   }
+
+  if (sub === "new-link" && method === "POST") return json(await newLink(env, url, id));
 
   if (sub === "records") {
     if (!collection && method === "GET") {

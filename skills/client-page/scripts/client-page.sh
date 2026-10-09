@@ -202,17 +202,87 @@ next() { printf '      → %s\n' "$*"; }
 
 install_hint() {
   case "$1" in
-    jq) echo "macOS: brew install jq · Debian/Ubuntu: sudo apt install jq · Windows: use WSL" ;;
+    jq) echo "macOS: brew install jq (or download from https://jqlang.org) · Debian/Ubuntu: sudo apt install jq · Windows: use WSL" ;;
+    curl) echo "macOS has it · Debian/Ubuntu: sudo apt install curl" ;;
+    openssl) echo "macOS has it · Debian/Ubuntu: sudo apt install openssl" ;;
     dig) echo "macOS has it · Debian/Ubuntu: sudo apt install dnsutils" ;;
     node) echo "https://nodejs.org (only needed to run the skill's tests)" ;;
     *) echo "macOS: brew install $1 · Debian/Ubuntu: sudo apt install $1" ;;
   esac
 }
 
+# ---------- tiers ----------
+# Each tier includes the one before it. "free" needs no card; R2 and Zero Trust ask for a payment method.
+
+tier_rank() { case "${1:-}" in free) echo 1 ;; media) echo 2 ;; full) echo 3 ;; *) echo 0 ;; esac; }
+tier_ok() { [[ "$(tier_rank "${1:-}")" -gt 0 ]]; }
+tier_label() { case "$1" in free) echo "free (pages)" ;; media) echo "media (pages + images and video)" ;; full) echo "full (pages + images and video + owner dashboard)" ;; esac; }
+# The tier in force: the config's, else what this machine has already set up.
+current_tier() {
+  local t; t="$(conf_get tier)"
+  if tier_ok "$t"; then printf '%s' "$t"; return 0; fi
+  if [[ -n "$(conf_get access_aud)" ]]; then echo full
+  elif [[ -n "$(conf_get files_bucket)" ]]; then echo media
+  elif [[ -n "$(conf_get d1_id)" ]]; then echo free
+  fi
+}
+raise_tier() { [[ "$(tier_rank "$1")" -le "$(tier_rank "$(current_tier)")" ]] || conf_set tier "$1"; }
+
+cmd_tiers() {
+  cat <<EOF
+client-page tiers. Each tier includes everything in the one before it.
+
+free: pages                                                   No card needed
+  You get   Pages at a link on your own domain or a free *.workers.dev address.
+            Visitors answer anonymously; answers are saved and read back through Claude.
+            Lock, archive, give a page a new link, delete it.
+            Small images (up to about 1.5 MB per page in total) built into the page itself.
+  You do    Make a free Cloudflare account, and one API token (2 permission rows, 4 with your own domain).
+
+media: + images and video                                     Card on file
+  Adds      Screenshots, images, short videos and PDFs you upload with a page: up to 100 MB each,
+            10 GB free. Visitors still can't upload anything.
+  You do    Add a payment method to the Cloudflare account and turn on R2 (Cloudflare's file storage).
+            The free allowance isn't charged. Plus 1 more token row.
+
+full: + owner dashboard                                       Card on file
+  Adds      https://<site>/admin behind a login with a code emailed to you: every page with its status,
+            search, copy link, open, change link, delete.
+  You do    Set up Cloudflare Zero Trust once (a team name and the Free plan, up to 50 users; it asks
+            for a payment method too). Plus 2 more token rows.
+
+Choose a tier and an address, then let doctor guide the rest:
+  $0 doctor --tier free  docs.example.com     (your own domain, already on Cloudflare)
+  $0 doctor --tier media --workers-dev        (no domain: Cloudflare's free address)
+Moving up later is the same command with the higher tier; nothing is lost.
+EOF
+}
+
 cf_account_guide() {
   cat <<EOF
-      → No Cloudflare account yet? Sign up free at https://dash.cloudflare.com/sign-up (email + password,
-        then confirm the email). No card is needed for the free plan this skill uses.
+      → No Cloudflare account yet? Sign up free at https://dash.cloudflare.com/sign-up (email and password,
+        then confirm the email).
+EOF
+}
+
+payment_guide() {
+  cat <<EOF
+      → Add a payment method (needed for R2 and Zero Trust; their free allowances aren't charged):
+          https://dash.cloudflare.com → your account → Manage account → Billing → Payment info → add a card.
+EOF
+}
+
+r2_enable_guide() {
+  cat <<EOF
+      → Turn on R2 once: https://dash.cloudflare.com → Storage & databases → R2 → follow the steps
+        (pick the free plan if asked). It needs the payment method above.
+EOF
+}
+
+zero_trust_guide() {
+  cat <<EOF
+      → Set up Zero Trust once: https://one.dash.cloudflare.com → choose a team name (e.g. your name or
+        company) → Free plan. A one-time PIN login (code by email) is on by default.
 EOF
 }
 
@@ -224,31 +294,46 @@ domain_guide() {
           • Use one you own: https://dash.cloudflare.com → Add a domain → enter ${zone:-the domain} → Free plan.
             Cloudflare shows two nameservers; set them at the registrar where the domain was bought.
             The domain turns Active within minutes (sometimes up to a day). Then run doctor again.
-      → No domain? Use Cloudflare's free address instead: $0 doctor --workers-dev
+      → No domain? Use Cloudflare's free address instead: $0 doctor --tier ${TIER_SEL:-free} --workers-dev
 EOF
 }
 
-# token_guide ZONE|"" : the permission list depends on whether a custom domain is used.
+# token_rows TIER ZONE|"": the permission rows this tier and address need, one per line.
+token_rows() {
+  local tier="$1" zone="$2"
+  echo "Account · Workers Scripts                                         · Edit"
+  echo "Account · D1                                                      · Edit"
+  [[ -n "$zone" ]] && echo "Zone    · Zone                                                    · Read   (zone: $zone)"
+  [[ -n "$zone" ]] && echo "Zone    · Workers Routes                                          · Edit   (zone: $zone)"
+  [[ "$(tier_rank "$tier")" -ge 2 ]] && echo "Account · Workers R2 Storage                                      · Edit"
+  [[ "$(tier_rank "$tier")" -ge 3 ]] && echo "Account · Access: Apps and Policies                               · Edit"
+  [[ "$(tier_rank "$tier")" -ge 3 ]] && echo "Account · Access: Organizations, Identity Providers, and Groups   · Edit"
+  return 0
+}
+
 token_guide() {
-  local zone="$1" rows zones
-  if [[ -n "$zone" ]]; then
-    rows=$'               Account · Workers Scripts · Edit\n               Account · D1              · Edit\n               Zone    · Zone            · Read\n               Zone    · Workers Routes  · Edit'
-    zones=$'\n             Zone Resources: Include · Specific zone · '"$zone"'.'
-  else
-    rows=$'               Account · Workers Scripts · Edit\n               Account · D1              · Edit'
-    zones=""
-  fi
+  local tier="$1" zone="$2"
   cat <<EOF
       → Create a Cloudflare API token (about two minutes):
           1. Open https://dash.cloudflare.com/profile/api-tokens → Create Token → Custom token → Get started.
           2. Token name: client-page
           3. Permissions, one row each (use "+ Add more"):
-$rows
-          4. Account Resources: Include · your account.$zones
+$(token_rows "$tier" "$zone" | sed 's/^/               /')
+          4. Account Resources: Include · your account.$([[ -n "$zone" ]] && printf '\n             Zone Resources: Include · Specific zone · %s.' "$zone")
           5. Continue to summary → Create Token → copy the token (Cloudflare shows it only once).
           6. Save it on this machine, in your own terminal. Paste when asked; nothing is shown:
                $(save_secret_cmd "$KC_CF")
 EOF
+}
+
+# The whole first-time path for a tier, in order, for someone who has nothing yet.
+onboarding_guide() {
+  local tier="$1" zone="$2"
+  echo "      Steps for the $tier tier, in order:"
+  cf_account_guide
+  if [[ "$(tier_rank "$tier")" -ge 2 ]]; then payment_guide; r2_enable_guide; fi
+  [[ "$(tier_rank "$tier")" -ge 3 ]] && zero_trust_guide
+  token_guide "$tier" "$zone"
 }
 
 # Prints the account id this setup uses: config, then CLIENT_PAGE_ACCOUNT_ID, then the token's only account.
@@ -270,44 +355,75 @@ workers_dev_subdomain() { # ACCOUNT_ID → the account's <name> in <name>.worker
 }
 
 access_guide() {
+  zero_trust_guide
   cat <<EOF
-      → The dashboard's login uses Cloudflare Zero Trust (free for up to 50 users):
-          1. Open https://one.dash.cloudflare.com and follow the first-run steps: pick a team name
-             (e.g. your name) and the Free plan. Cloudflare may ask for a payment method even on the
-             free plan; nothing is charged.
-          2. Edit the client-page API token (https://dash.cloudflare.com/profile/api-tokens) and add two rows:
-               Account · Access: Apps and Policies                               · Edit
-               Account · Access: Organizations, Identity Providers, and Groups   · Edit
-             (Edit lets admin-setup add the emailed one-time PIN login for you; Read works too, but then
-             you add it yourself: Integrations → Identity providers → Add new → One-time PIN.)
-             The token's value stays the same, so nothing needs saving again.
-          Then run: $0 admin-setup you@example.com
+      → Edit the client-page API token (https://dash.cloudflare.com/profile/api-tokens) and add two rows:
+          Account · Access: Apps and Policies                               · Edit
+          Account · Access: Organizations, Identity Providers, and Groups   · Edit
+        The token's value stays the same, so nothing needs saving again.
+      Then run: $0 admin-setup you@example.com
 EOF
 }
 
-# doctor [HOST | --workers-dev] [--preflight]: checks everything and prints the next step for each problem.
-# HOST is a hostname on the user's own domain; --workers-dev uses Cloudflare's free address instead.
-# With --preflight (used by setup) it prints nothing useful and returns non-zero if setup can't succeed yet.
-cmd_doctor() {
-  local h="" wd=0 preflight=0 rotate=0
-  for a in "$@"; do
-    case "$a" in --preflight) preflight=1 ;; --workers-dev) wd=1 ;; --rotate-admin-token) rotate=1 ;; *) h="$a" ;; esac
-  done
-  if [[ -z "$h" && $wd -eq 0 ]]; then
-    h="$(host)"
-    [[ "$h" == *.workers.dev ]] && wd=1
+# r2_state ACCOUNT_ID: on | off (R2 not turned on, usually no payment method) | denied (token lacks the row)
+r2_state() {
+  local out
+  if out="$(cf_try GET "/accounts/$1/r2/buckets")"; then echo on; return 0; fi
+  if grep -Eq '"code": ?10042[,}]' <<<"$out" || grep -qi "enable R2" <<<"$out"; then echo off
+  elif grep -Eq '"code": ?(10000|9109|10001)[,}]' <<<"$out"; then echo denied
+  else echo off; fi
+}
+
+# access_state ACCOUNT_ID: <team domain> | none (Zero Trust not set up) | denied (token lacks the row)
+access_state() {
+  local out team
+  if out="$(cf_try GET "/accounts/$1/access/organizations")"; then
+    team="$(jq -r '.result.auth_domain // empty' <<<"$out")"
+    if [[ -n "$team" ]]; then echo "$team"; else echo none; fi
+    return 0
   fi
+  if grep -Eq '"code": ?(10000|9109|10001)[,}]' <<<"$out"; then echo denied; else echo none; fi
+}
+
+# doctor [--tier free|media|full] [HOST | --workers-dev] [--preflight] [--rotate-admin-token]
+# Checks what the chosen tier needs, in order, and prints the next step for each gap.
+# With --preflight (used by setup) it returns non-zero if setup can't succeed yet.
+cmd_doctor() {
+  local h="" wd=0 preflight=0 rotate=0 tier="" a
+  while [[ $# -gt 0 ]]; do
+    a="$1"; shift
+    case "$a" in
+      --preflight) preflight=1 ;; --workers-dev) wd=1 ;; --rotate-admin-token) rotate=1 ;;
+      --tier) tier="${1:-}"; shift || true ;;
+      --tier=*) tier="${a#--tier=}" ;;
+      *) h="$a" ;;
+    esac
+  done
+  if [[ -z "$h" && $wd -eq 0 ]]; then h="$(host)"; fi
   [[ "$h" == *.workers.dev ]] && wd=1
+  [[ -n "$tier" ]] || tier="$(current_tier)"
+  TIER_SEL="$tier"
   FAILS=0
 
-  echo "Tools (no Cloudflare CLI is needed: wrangler and cloudflared are not used)"
+  echo "Tools (no Cloudflare CLI is needed: this skill talks to Cloudflare with curl)"
   for t in curl jq openssl; do
     if have "$t"; then pass "$t"; else fail "$t is not installed"; next "$(install_hint "$t")"; fi
   done
   if have dig; then pass "dig"; else note "dig not found (optional; helps check DNS) · $(install_hint dig)"; fi
   if have node; then pass "node (for the skill's tests)"; else note "node not found (optional) · $(install_hint node)"; fi
+  if have wrangler || have cloudflared; then note "wrangler/cloudflared are installed but not used; nothing to change"; fi
   pass "secrets are stored in $(where_secrets)"
   if [[ $FAILS -gt 0 ]]; then echo; echo "Install the missing tools, then run doctor again."; return 1; fi
+
+  echo; echo "Tier"
+  if [[ -z "$tier" ]]; then
+    fail "no tier chosen yet"
+    echo
+    cmd_tiers | sed 's/^/    /'
+    return 1
+  fi
+  if ! tier_ok "$tier"; then fail "unknown tier '$tier' (use free, media or full; see: $0 tiers)"; return 1; fi
+  pass "$(tier_label "$tier")"
 
   echo; echo "Site address"
   local zone_guess=""
@@ -315,8 +431,8 @@ cmd_doctor() {
     pass "Cloudflare's free address: https://$(worker_name).<your-name>.workers.dev/<uuid>"
   elif [[ -z "$h" ]]; then
     fail "no address chosen yet. Two options:"
-    next "Your own domain (looks best to clients): $0 doctor docs.example.com"
-    next "No domain needed, Cloudflare's free address: $0 doctor --workers-dev"
+    next "Your own domain (looks best to clients): $0 doctor --tier $tier docs.example.com"
+    next "No domain needed, Cloudflare's free address: $0 doctor --tier $tier --workers-dev"
     return 1
   elif [[ ! "$h" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]]; then
     fail "'$h' isn't a valid hostname (lowercase letters, digits, dots and dashes)"; return 1
@@ -325,12 +441,11 @@ cmd_doctor() {
     zone_guess="$(sed -E 's/^[^.]+\.//' <<<"$h")"
   fi
 
-  echo; echo "Cloudflare API token"
+  echo; echo "Cloudflare account and API token"
   if [[ -z "$(secret_get "$KC_CF")" ]]; then
-    fail "no token saved on this machine"
-    cf_account_guide
-    token_guide "$zone_guess"
-    echo; echo "Then run doctor again."; return 1
+    fail "no Cloudflare API token saved on this machine"
+    onboarding_guide "$tier" "$zone_guess"
+    echo; echo "Then run doctor again: $0 doctor --tier $tier $([[ $wd -eq 1 ]] && echo --workers-dev || echo "$h")"; return 1
   fi
   local v
   if v="$(cf_try GET /user/tokens/verify)" && [[ "$(jq -r '.result.status' <<<"$v")" == active ]]; then
@@ -338,22 +453,21 @@ cmd_doctor() {
   else
     fail "the saved token was rejected ($(jq -r '.errors[0].message // .result.status // "unknown"' <<<"$v" 2>/dev/null))"
     next "It may be mistyped, expired or deleted. Create a new one and save it again:"
-    token_guide "$zone_guess"
+    token_guide "$tier" "$zone_guess"
     return 1
   fi
 
   local zone_json="" zone="" zone_id="" account_id="" rc=0
   if [[ $wd -eq 1 ]]; then
-    echo; echo "Account"
     account_id="$(find_account)" || rc=$?
     if [[ $rc -eq 2 ]]; then
       fail "this token can use several Cloudflare accounts (listed above)"
-      next "Pick one and run: CLIENT_PAGE_ACCOUNT_ID=<id> $0 doctor --workers-dev  (setup the same way)"
+      next "Pick one and run: CLIENT_PAGE_ACCOUNT_ID=<id> $0 doctor --tier $tier --workers-dev  (setup the same way)"
       return 1
     elif [[ -z "$account_id" ]]; then
       fail "the token can't see any Cloudflare account"
       next "Edit the token so Account Resources includes your account:"
-      token_guide ""
+      token_guide "$tier" ""
       return 1
     fi
     pass "account $account_id"
@@ -365,10 +479,8 @@ cmd_doctor() {
       fail "this account hasn't chosen its free workers.dev name yet"
       next "Open https://dash.cloudflare.com → Workers & Pages. The first visit asks you to pick a name"
       next "(for example your company name); pages then live at https://$(worker_name).<that-name>.workers.dev."
-      next "Then run doctor again."
     fi
   else
-    echo; echo "Domain"
     if zone_json="$(find_zone "$h")"; then
       zone="$(jq -r '.name' <<<"$zone_json")"; zone_id="$(jq -r '.id' <<<"$zone_json")"; account_id="$(jq -r '.account.id' <<<"$zone_json")"
       if [[ "$(jq -r '.status' <<<"$zone_json")" == active ]]; then
@@ -387,15 +499,31 @@ cmd_doctor() {
     fi
   fi
 
-  echo; echo "Token permissions"
-  local before=$FAILS
-  if cf_try GET "/accounts/$account_id/workers/scripts" >/dev/null; then pass "Workers Scripts"
-  else fail "can't manage Workers"; next "Edit the token: add Account · Workers Scripts · Edit"; fi
-  if cf_try GET "/accounts/$account_id/d1/database?per_page=1" >/dev/null; then pass "D1"
-  else fail "can't manage D1 databases"; next "Edit the token: add Account · D1 · Edit"; fi
+  echo; echo "What the $tier tier needs"
+  local before=$FAILS r2="" acc=""
+  if cf_try GET "/accounts/$account_id/workers/scripts" >/dev/null; then pass "Workers (pages)"
+  else fail "the token can't manage Workers"; next "Edit the token: add Account · Workers Scripts · Edit"; fi
+  if cf_try GET "/accounts/$account_id/d1/database?per_page=1" >/dev/null; then pass "D1 (saved answers)"
+  else fail "the token can't manage D1 databases"; next "Edit the token: add Account · D1 · Edit"; fi
   if [[ $wd -eq 0 ]]; then
-    if cf_try GET "/zones/$zone_id/workers/routes" >/dev/null; then pass "Workers Routes on $zone"
-    else fail "can't attach a Worker to $zone"; next "Edit the token: add Zone · Workers Routes · Edit for $zone"; fi
+    if cf_try GET "/zones/$zone_id/workers/routes" >/dev/null; then pass "Workers Routes on $zone (your address)"
+    else fail "the token can't attach the Worker to $zone"; next "Edit the token: add Zone · Workers Routes · Edit for $zone"; fi
+  fi
+  if [[ "$(tier_rank "$tier")" -ge 2 ]]; then
+    r2="$(r2_state "$account_id")"
+    case "$r2" in
+      on) pass "R2 (images and video) is on" ;;
+      denied) fail "the token can't use R2"; next "Edit the token: add Account · Workers R2 Storage · Edit" ;;
+      *) fail "R2 isn't turned on for this account yet"; payment_guide; r2_enable_guide ;;
+    esac
+  fi
+  if [[ "$(tier_rank "$tier")" -ge 3 ]]; then
+    acc="$(access_state "$account_id")"
+    case "$acc" in
+      denied) fail "the token can't read Zero Trust"; next "Edit the token: add the two Access rows below"; access_guide ;;
+      none) fail "Zero Trust isn't set up for this account yet"; payment_guide; zero_trust_guide ;;
+      *) pass "Zero Trust team $acc (dashboard login)" ;;
+    esac
   fi
   [[ $FAILS -eq $before ]] || next "(Edit the token at https://dash.cloudflare.com/profile/api-tokens; its value stays the same.)"
 
@@ -410,7 +538,7 @@ cmd_doctor() {
   elif [[ -n "$(public_ip "$h")" ]]; then
     fail "$h already has a DNS record pointing somewhere else"
     next "In Cloudflare → $zone → DNS → Records, delete the record for ${h%%.$zone} (if it isn't used),"
-    next "or choose another hostname, e.g. pages.$zone, and run: $0 doctor pages.$zone"
+    next "or choose another hostname, e.g. pages.$zone, and run: $0 doctor --tier $tier pages.$zone"
   else
     pass "$h is free (no DNS record yet); setup will create it"
   fi
@@ -436,40 +564,47 @@ cmd_doctor() {
     esac
   elif [[ -n "$(secret_get "$KC_ADMIN")" ]]; then pass "admin token saved"
   else note "admin token not created yet (setup creates it)"; fi
-  if [[ -n "$h" && "$(host)" == "$h" && -n "$(conf_get d1_id)" ]]; then pass "config for $h in $CONF"; else note "not set up for this address yet"; fi
+  local configured=0
+  if [[ -n "$h" && "$(host)" == "$h" && -n "$(conf_get d1_id)" ]]; then configured=1; pass "config for $h in $CONF"; else note "not set up for this address yet"; fi
 
-  echo; echo "Images and video (optional)"
-  if [[ -n "$(conf_get files_bucket)" && "$(host)" == "$h" ]]; then
-    if [[ "$adm" == match ]] && ( admin GET "/files" ) >/dev/null 2>&1; then pass "file storage is on (R2 bucket $(conf_get files_bucket))"
-    else note "file storage is configured (R2 bucket $(conf_get files_bucket)); couldn't check it from this machine"; fi
+  echo; echo "Features"
+  local ready=$(( live == 1 && configured == 1 ))
+  if [[ $ready -eq 1 ]]; then pass "Pages and saved answers: live at https://$h"; else note "Pages and saved answers: after setup"; fi
+  local files_on=0 dash_on=0 nextstep=""
+  if [[ "$(tier_rank "$tier")" -ge 2 ]]; then
+    if [[ -n "$(conf_get files_bucket)" && $ready -eq 1 ]] && ( admin GET "/files" ) >/dev/null 2>&1; then files_on=1; pass "Images and video: on (R2 bucket $(conf_get files_bucket))"
+    else note "Images and video: in your tier, not set up yet"; fi
   else
-    note "not set up. To publish pages with images or video: $0 files-setup"
+    note "Images and video: hosted files are in the media tier. On free, small images are built into the page."
   fi
-
-  echo; echo "Owner dashboard (optional)"
-  if [[ -n "$(conf_get access_aud)" && "$(host)" == "$h" ]]; then
-    local ip dash; ip="$(public_ip "$h")"
-    if [[ -n "$ip" ]]; then dash="$(curl -s -m 10 --resolve "$h:443:$ip" -o /dev/null -w '%{http_code} %{redirect_url}' "https://$h/admin" 2>/dev/null || true)"
-    else dash="$(curl -s -m 10 -o /dev/null -w '%{http_code} %{redirect_url}' "https://$h/admin" 2>/dev/null || true)"; fi
-    case "$dash" in
-      30[0-9]\ *cloudflareaccess.com*) pass "https://$h/admin asks for a Cloudflare login (allowed: $(conf_get admin_emails))" ;;
-      200\ *) fail "https://$h/admin answered without a login"; next "Run: $0 admin-setup $(conf_get admin_emails)" ;;
-      *) fail "https://$h/admin isn't behind the Cloudflare login (got: ${dash:-no answer})"; next "Run: $0 admin-setup $(conf_get admin_emails)" ;;
-    esac
+  if [[ "$(tier_rank "$tier")" -ge 3 ]]; then
+    if [[ -n "$(conf_get access_aud)" && $ready -eq 1 ]]; then
+      local ip dash; ip="$(public_ip "$h")"
+      if [[ -n "$ip" ]]; then dash="$(curl -s -m 10 --resolve "$h:443:$ip" -o /dev/null -w '%{http_code} %{redirect_url}' "https://$h/admin" 2>/dev/null || true)"
+      else dash="$(curl -s -m 10 -o /dev/null -w '%{http_code} %{redirect_url}' "https://$h/admin" 2>/dev/null || true)"; fi
+      case "$dash" in
+        30[0-9]\ *cloudflareaccess.com*) dash_on=1; pass "Owner dashboard: https://$h/admin, login for $(conf_get admin_emails)" ;;
+        *) fail "Owner dashboard: https://$h/admin isn't behind the Cloudflare login (got: ${dash:-no answer})"; next "Run: $0 admin-setup $(conf_get admin_emails)" ;;
+      esac
+    else note "Owner dashboard: in your tier, not set up yet"; fi
   else
-    note "not set up. To list every page at https://${h:-<site>}/admin behind a login: $0 admin-setup you@example.com"
+    note "Owner dashboard: in the full tier (see: $0 tiers)"
   fi
 
   echo
   local setup_arg="$h"; [[ $wd -eq 1 ]] && setup_arg="--workers-dev"
   if [[ $FAILS -gt 0 ]]; then
     echo "Fix the ✗ items above, then run doctor again."; return 1
-  elif [[ $live -eq 1 && "$adm" == match && "$(host)" == "$h" ]]; then
-    [[ $preflight -eq 1 ]] || echo "All set. Publish a page with: $0 publish page.html"
-  else
-    [[ $rotate -eq 1 ]] && setup_arg="$setup_arg --rotate-admin-token"
-    [[ $preflight -eq 1 ]] || echo "Ready. Next: $0 setup $setup_arg"
   fi
+  if [[ $ready -eq 0 || "$adm" != match ]]; then
+    [[ $rotate -eq 1 ]] && setup_arg="$setup_arg --rotate-admin-token"
+    nextstep="$0 setup --tier $tier $setup_arg"
+  elif [[ "$(tier_rank "$tier")" -ge 2 && $files_on -eq 0 ]]; then nextstep="$0 files-setup"
+  elif [[ "$(tier_rank "$tier")" -ge 3 && $dash_on -eq 0 ]]; then nextstep="$0 admin-setup you@example.com"
+  fi
+  if [[ $preflight -eq 1 ]]; then return 0; fi
+  if [[ -n "$nextstep" ]]; then echo "Ready. Next: $nextstep"
+  else echo "All set for the $tier tier. Publish a page with: $0 publish page.html"; fi
   return 0
 }
 
@@ -497,18 +632,32 @@ apply_schema() {
 # setup HOST          use the user's own domain (custom domain on their Cloudflare zone)
 # setup --workers-dev use Cloudflare's free <worker>.<name>.workers.dev address
 cmd_setup() {
-  local h="" wd=0 rotate=0
-  for a in "$@"; do case "$a" in --workers-dev) wd=1 ;; --rotate-admin-token) rotate=1 ;; *) h="$a" ;; esac; done
+  local h="" wd=0 rotate=0 tier="" a
+  while [[ $# -gt 0 ]]; do
+    a="$1"; shift
+    case "$a" in
+      --workers-dev) wd=1 ;; --rotate-admin-token) rotate=1 ;;
+      --tier) tier="${1:-}"; shift || true ;;
+      --tier=*) tier="${a#--tier=}" ;;
+      *) h="$a" ;;
+    esac
+  done
+  [[ -n "$tier" ]] || tier="$(current_tier)"
+  if ! tier_ok "$tier"; then
+    cmd_tiers
+    die "choose a tier first: $0 doctor --tier free|media|full <address>"
+  fi
   if [[ -z "$h" && $wd -eq 0 ]]; then h="$(host)"; fi
   [[ "$h" == *.workers.dev ]] && wd=1
   if [[ -z "$h" && $wd -eq 0 ]]; then
-    die "usage: $0 setup docs.<your-domain>   or   $0 setup --workers-dev   (run doctor first)"
+    die "usage: $0 setup --tier $tier docs.<your-domain>   or   $0 setup --tier $tier --workers-dev   (run doctor first)"
   fi
   local doctor_args=("$h"); [[ $wd -eq 1 ]] && doctor_args=(--workers-dev)
   [[ $rotate -eq 1 ]] && doctor_args+=(--rotate-admin-token)
   echo "Checking prerequisites…"
-  cmd_doctor "${doctor_args[@]}" --preflight >/dev/null \
-    || { cmd_doctor "${doctor_args[@]}" || true; die "setup stopped before changing anything: fix the ✗ items above"; }
+  # setup itself only needs what every tier needs; the tier's extras are checked by files-setup / admin-setup.
+  cmd_doctor --tier free "${doctor_args[@]}" --preflight >/dev/null \
+    || { cmd_doctor --tier "$tier" "${doctor_args[@]}" || true; die "setup stopped before changing anything: fix the ✗ items above"; }
 
   local zone_id="" account_id
   if [[ $wd -eq 1 ]]; then
@@ -568,7 +717,14 @@ cmd_setup() {
       echo " ok"
       curl -fsS -m 10 "https://$h/_/health" >/dev/null 2>&1 \
         || echo "(This machine may still have an old DNS answer cached for a few minutes.)"
-      echo "Done. Publish a page with: $0 publish page.html"
+      conf_set tier "$tier"
+      echo "Done: pages are live on the $tier tier."
+      case "$tier" in
+        media) echo "Next, turn on images and video: $0 files-setup" ;;
+        full) echo "Next, turn on images and video: $0 files-setup"
+              echo "Then the owner dashboard:      $0 admin-setup you@example.com" ;;
+        *) echo "Publish a page with: $0 publish page.html" ;;
+      esac
       return 0
     fi
     printf '.'; sleep 4
@@ -633,14 +789,12 @@ cmd_admin_setup() {
   for e in "${list[@]}"; do [[ "$e" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || die "not an email address: $e"; done
   local h account_id; h="$(require_host)"; account_id="$(require_conf account_id)"
 
-  local org team
-  if ! org="$(cf_try GET "/accounts/$account_id/access/organizations")"; then
-    echo "  ✗ Cloudflare Zero Trust isn't set up for this account yet, or the token can't read it." >&2
-    access_guide >&2
-    die "admin-setup stopped before changing anything"
-  fi
-  team="$(jq -r '.result.auth_domain // empty' <<<"$org")"
-  [[ -n "$team" ]] || { access_guide >&2; die "no Zero Trust team domain found; finish step 1 above"; }
+  local team
+  team="$(access_state "$account_id")"
+  case "$team" in
+    denied) echo "  ✗ The API token can't read Zero Trust yet." >&2; access_guide >&2; die "admin-setup stopped before changing anything" ;;
+    none) echo "  ✗ Cloudflare Zero Trust isn't set up for this account yet." >&2; payment_guide >&2; access_guide >&2; die "admin-setup stopped before changing anything" ;;
+  esac
   echo "Zero Trust team: $team"
 
   local apps app_id body out aud include
@@ -676,6 +830,7 @@ cmd_admin_setup() {
   fi
 
   conf_set access_team "$team"; conf_set access_aud "$aud"; conf_set admin_emails "$emails"
+  raise_tier full
   cmd_deploy
   echo "Dashboard ready: https://$h/admin"
   echo "Sign in with $(sed 's/,/ or /g' <<<"$emails"); Cloudflare emails a one-time code. Opening https://$h while signed in goes there too."
@@ -697,13 +852,13 @@ mime_of() {
 sha256_of() { if have shasum; then shasum -a 256 "$1" | cut -c1-64; else sha256sum "$1" | cut -c1-64; fi; }
 
 r2_guide() {
+  echo "      Hosted images and video are the media tier (see: $0 tiers). They use Cloudflare R2: 10 GB free."
+  payment_guide
+  r2_enable_guide
   cat <<EOF
-      → Images and videos are kept in Cloudflare R2 (10 GB free, no charge for downloads):
-          1. Turn R2 on once: https://dash.cloudflare.com → Storage & databases → R2 → follow the steps.
-             Cloudflare may ask for a payment method; the free allowance isn't charged.
-          2. Edit the client-page API token (https://dash.cloudflare.com/profile/api-tokens) and add:
-               Account · Workers R2 Storage · Edit
-          Then run: $0 files-setup
+      → Edit the client-page API token (https://dash.cloudflare.com/profile/api-tokens) and add:
+          Account · Workers R2 Storage · Edit
+      Then run: $0 files-setup
 EOF
 }
 
@@ -742,8 +897,10 @@ cmd_upload() {
 # path (src=, data-src=, href=, poster=), six at a time, and writes a copy of the page with those links
 # pointing at the uploaded files. Prints the number of files.
 rewrite_assets() {
-  local html="$1" base="$2" out="$3" refs ref map n=0 work
+  local html="$1" base="$2" out="$3" refs ref n=0 work mode=upload type
   work="$(mktemp -d)"
+  # Without file storage (the free tier) images are built into the page as data: URLs instead.
+  [[ -n "$(conf_get files_bucket)" ]] || mode=inline
   refs="$(grep -oE "(src|data-src|href|poster)=(\"[^\"]*\"|'[^']*')" "$html" | sed -E "s/^[a-z-]+=//; s/^[\"']//; s/[\"']\$//" | sort -u || true)"
   while IFS= read -r ref; do
     [[ -n "$ref" ]] || continue
@@ -753,19 +910,29 @@ rewrite_assets() {
     printf '%s\0' "$ref" >>"$work/refs"
     n=$((n + 1))
   done <<<"$refs"
-  if [[ $n -gt 0 ]]; then
+  : >"$work/map.tsv"
+  if [[ $n -gt 0 && $mode == upload ]]; then
     # Each worker prints "<ref>\t<path>"; any failed upload makes xargs fail, and the publish stops.
     xargs -0 -n 1 -P 6 "$0" _upload-one "$base" <"$work/refs" >"$work/map.tsv" \
       || { rm -rf "$work"; echo "client-page: an upload failed (see above); nothing was published" >&2; exit 1; }
-  else
-    : >"$work/map.tsv"
+  elif [[ $n -gt 0 ]]; then
+    while IFS= read -r -d '' ref; do
+      type="$(mime_of "$base/$ref")"
+      case "$type" in
+        image/*) printf '%s\tdata:%s;base64,%s\n' "$ref" "$type" "$(base64 <"$base/$ref" | tr -d '\n')" >>"$work/map.tsv" ;;
+        *) rm -rf "$work"
+           echo "client-page: $ref is a ${type#*/} file. Video, audio and PDF need hosted files, which are the media tier." >&2
+           echo "  See: $0 tiers   then: $0 files-setup" >&2
+           exit 1 ;;
+      esac
+    done <"$work/refs"
   fi
-  map="$(jq -Rn '[inputs | select(length > 0) | split("\t") | {(.[0]): .[1]}] | add // {}' <"$work/map.tsv")"
-  rm -rf "$work"
-  jq -Rrs --argjson m "$map" 'reduce ($m | to_entries[]) as $e (.;
+  jq -Rn '[inputs | select(length > 0) | split("\t") | {(.[0]): .[1]}] | add // {}' <"$work/map.tsv" >"$work/map.json"
+  jq -Rrs --slurpfile mm "$work/map.json" '$mm[0] as $m | reduce ($m | to_entries[]) as $e (.;
       split("\"" + $e.key + "\"") | join("\"" + $e.value + "\"")
     | split("\u0027" + $e.key + "\u0027") | join("\u0027" + $e.value + "\u0027"))' "$html" >"$out"
-  echo "$n"
+  rm -rf "$work"
+  echo "$n $mode"
 }
 
 # Internal, used by rewrite_assets through xargs: _upload-one BASE_DIR REF
@@ -787,11 +954,11 @@ cmd_rm_file() {
 cmd_files_setup() {
   local account_id out bucket="client-page-files"
   account_id="$(require_conf account_id)"
-  if ! out="$(cf_try GET "/accounts/$account_id/r2/buckets")"; then
-    echo "  ✗ R2 isn't available to this token yet ($(jq -r '.errors[0].message // "no answer"' <<<"$out" 2>/dev/null))." >&2
-    r2_guide >&2
-    die "files-setup stopped before changing anything"
-  fi
+  case "$(r2_state "$account_id")" in
+    denied) echo "  ✗ The API token can't use R2 yet." >&2; r2_guide >&2; die "files-setup stopped before changing anything" ;;
+    off) echo "  ✗ R2 isn't turned on for this Cloudflare account yet (it needs a payment method on file)." >&2; r2_guide >&2; die "files-setup stopped before changing anything" ;;
+  esac
+  out="$(cf GET "/accounts/$account_id/r2/buckets")"
   if [[ "$(jq --arg b "$bucket" '[.result.buckets[]? | select(.name == $b)] | length' <<<"$out")" -eq 0 ]]; then
     cf POST "/accounts/$account_id/r2/buckets" -H 'content-type: application/json' --data "{\"name\": \"$bucket\"}" >/dev/null
     echo "Created R2 bucket '$bucket'"
@@ -799,6 +966,7 @@ cmd_files_setup() {
     echo "Using R2 bucket '$bucket'"
   fi
   conf_set files_bucket "$bucket"
+  raise_tier media
   cmd_deploy
   # A new Worker version takes a few seconds to reach every Cloudflare location.
   local i
@@ -844,7 +1012,15 @@ cmd_publish() {
   if [[ "$assets" != "-" ]]; then
     n="$(rewrite_assets "$file" "${assets:-$(dirname "$file")}" "$tmp/page.html")" || { rm -rf "$tmp"; exit 1; }
     src="$tmp/page.html"
-    [[ "$n" -eq 0 ]] || echo "Linked $n file(s) from the page to their uploaded copies" >&2
+    case "$n" in
+      "0 "*) ;;
+      *" upload") echo "Linked ${n% *} file(s) from the page to their uploaded copies" >&2 ;;
+      *" inline") echo "Built ${n% *} image(s) into the page (free tier: no hosted files)" >&2
+        if [[ "$(wc -c <"$src" | tr -d ' ')" -gt 1800000 ]]; then
+          rm -rf "$tmp"
+          die "with its images built in, the page is over the 1.8 MB limit. Use smaller images (e.g. JPEG, under 1200 px wide), or move up to the media tier: $0 tiers"
+        fi ;;
+    esac
   fi
   jq -n --rawfile html "$src" --arg title "$title" --arg mode "$mode" --arg description "$description" \
     '{html: $html, title: $title}
@@ -881,6 +1057,20 @@ patch_page() {
   rm -f "$tmp"
 }
 
+cmd_new_link() {
+  uuid_ok "${1:-}"
+  admin POST "/pages/$1/new-link" | jq -r '"New link: \(.url)\n  The old link (\(.old)) no longer works; saved answers moved with the page."'
+}
+
+# delete UUID --yes: removes the page, its saved answers and the uploaded files only it uses. Permanent.
+cmd_delete() {
+  local id="" yes=0 a
+  for a in "$@"; do case "$a" in --yes) yes=1 ;; *) id="$a" ;; esac; done
+  uuid_ok "$id"
+  [[ $yes -eq 1 ]] || die "delete is permanent (the page, its saved answers and files only it uses). Re-run with --yes: $0 delete $id --yes   (to just hide it: $0 archive $id)"
+  admin DELETE "/pages/$id" | jq -r '"Deleted \(.deleted): \(.records) saved entries removed, \(.filesDeleted) files deleted, \(.filesKept) kept because other pages use them."'
+}
+
 cmd_rm_record() {
   uuid_ok "$1"; [[ -n "${2:-}" && -n "${3:-}" ]] || die "usage: rm-record UUID COLLECTION DOC_ID"
   admin DELETE "/pages/$1/records/$2/$3" >/dev/null && echo "Removed $2/$3"
@@ -891,10 +1081,10 @@ usage() {
 Usage: $(basename "$0") <command> [args]
 
 Getting started (no Cloudflare CLI needed):
-  doctor docs.example.com      check everything for your own domain and print the next step for each gap
-  doctor --workers-dev         same, using Cloudflare's free <name>.workers.dev address (no domain needed)
-  setup docs.example.com       one-time: D1 + schema + admin token + Worker + custom domain
-  setup --workers-dev          one-time, on the free workers.dev address
+  tiers                        what each tier gives you and needs (free: no card; media and full: card on file)
+  doctor --tier T ADDRESS      check what tier T needs and print the next step for each gap.
+                               ADDRESS is docs.example.com (your domain) or --workers-dev (free address)
+  setup --tier T ADDRESS       one-time: database, schema, admin token, Worker, address
   setup … --rotate-admin-token replace the site's admin token from this machine (when the machine that set it up is gone)
                                (setup refuses to start until doctor passes; with no argument both reuse
                                the address already set up)
@@ -918,6 +1108,8 @@ Pages:
   records UUID [COLLECTION]    dump saved answers as JSON
   lock UUID | unlock UUID      stop or resume accepting answers
   archive UUID | restore UUID  hide the page from visitors, or bring it back (nothing is deleted)
+  new-link UUID                give the page a new uuid; the old link stops working, answers move with it
+  delete UUID --yes            delete the page, its answers and files only it uses, for good
   rm-record UUID COLLECTION ID remove one saved document (e.g. a test probe)
 
 Maintenance:
@@ -933,6 +1125,7 @@ main() {
   local cmd="${1:-}"; shift || true
   case "$cmd" in
     doctor|verify) cmd_doctor "$@" ;;
+    tiers) cmd_tiers ;;
     setup) cmd_setup "$@" ;;
     deploy) cmd_deploy "$@" ;;
     admin-setup) cmd_admin_setup "$@" ;;
@@ -953,6 +1146,8 @@ main() {
     archive) patch_page "${1:-}" '{"archived":true}' ;;
     restore) patch_page "${1:-}" '{"archived":false}' ;;
     rm-record) cmd_rm_record "${1:-}" "${2:-}" "${3:-}" ;;
+    new-link) cmd_new_link "${1:-}" ;;
+    delete) cmd_delete "$@" ;;
     ""|-h|--help|help) usage ;;
     *) usage; exit 1 ;;
   esac
