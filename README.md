@@ -47,7 +47,8 @@ npx skills update --global --yes \
   task-group-executor \
   query-data-sq \
   git-commit \
-  chief-engineer-delegator
+  chief-engineer-delegator \
+  client-page
 ```
 
 Update all project skills from this repo:
@@ -65,7 +66,8 @@ npx skills update --project --yes \
   task-group-executor \
   query-data-sq \
   git-commit \
-  chief-engineer-delegator
+  chief-engineer-delegator \
+  client-page
 ```
 
 Restart Codex after updating.

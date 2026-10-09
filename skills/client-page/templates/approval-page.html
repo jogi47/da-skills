@@ -1,0 +1,706 @@
+<title>Example Approval</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one reading column, sticky progress strip, each item a row with an optional tag and its own Agreed / Change control; final decision at the foot. */
+:root {
+  --paper: #f3f6f7;
+  --surface: #ffffff;
+  --ink: #16222a;
+  --muted: #586874;
+  --line: #d6dee3;
+  --court: #23508c;
+  --court-soft: #e2eaf5;
+  --ok: #1d7448;
+  --ok-soft: #e0f1e7;
+  --warn: #9a5200;
+  --warn-soft: #fbecd6;
+  --hand: #6a3dab;
+  --hand-soft: #eee6f8;
+  --grey: #55626b;
+  --grey-soft: #e6eaed;
+  --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0e151a; --surface: #152029; --ink: #e4ecf0; --muted: #98a9b4; --line: #26353f;
+    --court: #86aee6; --court-soft: #1a2c44; --ok: #63c992; --ok-soft: #123020;
+    --warn: #f0a650; --warn-soft: #3a2710; --hand: #bc9ff0; --hand-soft: #2a2140; --grey: #a7b4bd; --grey-soft: #212b32;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0e151a; --surface: #152029; --ink: #e4ecf0; --muted: #98a9b4; --line: #26353f;
+  --court: #86aee6; --court-soft: #1a2c44; --ok: #63c992; --ok-soft: #123020;
+  --warn: #f0a650; --warn-soft: #3a2710; --hand: #bc9ff0; --hand-soft: #2a2140; --grey: #a7b4bd; --grey-soft: #212b32;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+  padding-inline: 16px; padding-block: 0 64px;
+}
+.wrap { max-width: 860px; margin: 0 auto; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(28px, 5vw, 40px); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 22px; font-weight: 700; }
+p { margin: 0; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--court); outline-offset: 2px; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+header.top { padding-block: 40px 24px; display: grid; gap: 14px; }
+.eyebrow { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.lede { max-width: 64ch; color: var(--ink); }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 20px; color: var(--muted); font-size: 13px; }
+.howto { display: grid; gap: 8px; padding: 14px 16px; background: var(--court-soft); border-radius: 10px; max-width: 64ch; }
+.howto ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.banner { padding: 10px 14px; border-radius: 8px; font-size: 14px; border: 1px solid var(--line); background: var(--surface); }
+.banner[data-kind="warn"] { border-color: var(--warn); background: var(--warn-soft); }
+
+.strip {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--paper); border-bottom: 1px solid var(--line);
+  padding-block: 10px; display: grid; gap: 10px;
+}
+.progress-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 14px; }
+.bar { flex: 1 1 160px; height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; display: flex; min-width: 120px; }
+.bar span { display: block; height: 100%; }
+.bar .b-ok { background: var(--ok); }
+.bar .b-change { background: var(--warn); }
+.counts { display: flex; gap: 14px; flex-wrap: wrap; }
+.counts b { font-variant-numeric: tabular-nums; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 99px;
+  padding: 4px 12px; font-size: 13px;
+}
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.search { flex: 1 1 180px; min-width: 0; }
+.search input {
+  width: 100%; padding: 6px 12px; border-radius: 99px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 14px;
+}
+.btn-quiet { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 5px 12px; font-size: 13px; }
+
+nav.toc { display: flex; flex-wrap: wrap; gap: 6px 14px; padding-block: 18px 4px; font-size: 13px; }
+nav.toc a { color: var(--court); text-decoration: none; }
+nav.toc a:hover { text-decoration: underline; }
+
+section.group { padding-block: 32px 0; display: grid; gap: 12px; scroll-margin-top: 120px; }
+.group-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 8px 16px; }
+.group-head .code { color: var(--court); font-size: 13px; }
+.group-intro { color: var(--muted); max-width: 66ch; }
+.list { display: grid; gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+
+.item { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 6px 16px; padding: 14px 16px; border-top: 1px solid var(--line); }
+.item:first-child { border-top: 0; }
+.item[data-status="agreed"] { box-shadow: inset 3px 0 0 var(--ok); }
+.item[data-status="change"] { box-shadow: inset 3px 0 0 var(--warn); }
+.item .ref { color: var(--muted); font-size: 12px; padding-top: 3px; }
+.item .body { display: grid; gap: 6px; min-width: 0; }
+.item .title { font-weight: 600; }
+.item .detail { color: var(--muted); font-size: 14px; }
+.item .detail ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 2px; }
+.item .quote { border-left: 2px solid var(--line); padding-left: 10px; margin-top: 4px; font-size: 14px; color: var(--ink); }
+.how-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.how { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 2px 10px 2px 8px; border-radius: 99px; letter-spacing: 0.01em; white-space: nowrap; }
+.how::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.how[data-h="blue"] { background: var(--court-soft); color: var(--court); }
+.how[data-h="violet"] { background: var(--hand-soft); color: var(--hand); }
+.how[data-h="grey"] { background: var(--grey-soft); color: var(--grey); }
+.dest { font-size: 13px; font-weight: 500; color: var(--ink); }
+.legend { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); max-width: 64ch; }
+.legend dl { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; align-items: baseline; }
+.legend dd { margin: 0; font-size: 14px; color: var(--muted); }
+.legend dt { display: flex; }
+.legend .note-small { font-size: 13px; color: var(--muted); }
+@media (max-width: 480px) { .legend dl { grid-template-columns: minmax(0, 1fr); gap: 2px; } .legend dd { margin-bottom: 8px; } }
+
+.decide { display: grid; gap: 6px; justify-items: end; align-content: start; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); padding: 6px 12px; font-size: 13px; font-weight: 500; white-space: nowrap; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[data-v="agreed"][aria-pressed="true"] { background: var(--ok); color: var(--surface); }
+.seg button[data-v="change"][aria-pressed="true"] { background: var(--warn); color: var(--surface); }
+.seg button:disabled { cursor: default; opacity: 0.7; }
+.who { font-size: 12px; color: var(--muted); text-align: right; }
+.linkish { background: none; border: 0; padding: 0; color: var(--court); font-size: 13px; text-decoration: underline; text-underline-offset: 2px; }
+
+.note { grid-column: 2 / -1; display: grid; gap: 6px; }
+.note textarea {
+  width: 100%; min-height: 64px; resize: vertical; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; font-size: 14px;
+}
+.note-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.note-saved { white-space: pre-wrap; font-size: 14px; padding: 8px 10px; border-radius: 8px; background: var(--warn-soft); }
+.item[data-status="agreed"] .note-saved { background: var(--ok-soft); }
+.btn-primary { border: 0; background: var(--court); color: var(--surface); border-radius: 8px; padding: 6px 14px; font-size: 13px; font-weight: 600; }
+.btn-primary:disabled { opacity: 0.5; cursor: default; }
+
+.empty { padding: 24px 16px; color: var(--muted); text-align: center; }
+
+#final { padding-block: 40px 0; display: grid; gap: 14px; scroll-margin-top: 120px; }
+.signcard { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 14px; }
+.choices { display: grid; gap: 8px; }
+.choices label { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.choices input { margin-top: 4px; accent-color: var(--court); }
+.signed { padding: 12px 14px; border-radius: 8px; background: var(--court-soft); }
+.signed[data-o="approved"] { background: var(--ok-soft); }
+.signed[data-o="rejected"] { background: var(--warn-soft); }
+#signNote { width: 100%; min-height: 70px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; }
+
+.activity { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+.activity li { list-style: none; }
+.activity ul { margin: 0; padding: 0; display: grid; gap: 4px; }
+
+.toast { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 8px 16px; border-radius: 8px; font-size: 14px; z-index: 10; max-width: calc(100% - 32px); }
+
+@media (max-width: 640px) {
+  .item { grid-template-columns: minmax(0, 1fr); }
+  .item .ref { padding-top: 0; }
+  .decide { justify-items: start; }
+  .who { text-align: left; }
+  .note { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bar span { transition: width 0.3s ease; }
+}
+/* Wide screens: scale the whole page up so the reading column doesn't look lost on a big monitor. */
+@media (min-width: 1440px) { body { zoom: 1.12; } }
+@media (min-width: 1800px) { body { zoom: 1.25; } }
+@media (min-width: 2300px) { body { zoom: 1.4; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">For approval</div>
+    <h1>Example approval</h1>
+    <p class="lede">Each item below describes how something works today. Please read each one and mark whether it matches what you expect. Your answers are saved for everyone who has this link; no names are recorded.</p>
+    <div class="meta">
+      <span>Prepared 9 October 2026</span>
+      <span id="itemTotal"></span>
+    </div>
+    <div class="howto">
+      <strong>How to answer</strong>
+      <ol>
+        <li>For each item, press <b>Agreed</b> if it is right, or <b>Change needed</b> if it is not.</li>
+        <li>When you choose <b>Change needed</b>, write what should happen instead.</li>
+        <li>When every item has an answer, record your final decision at the bottom of the page.</li>
+      </ol>
+    </div>
+    <div class="legend" id="legend" aria-labelledby="legendHead" hidden></div>
+    <div class="banner" id="modeBanner" hidden></div>
+  </header>
+
+  <div class="strip" role="region" aria-label="Progress and filters">
+    <div class="progress-row">
+      <div class="counts">
+        <span><b id="cAnswered">0</b> of <b id="cTotal">0</b> answered</span>
+        <span style="color:var(--ok)"><b id="cAgreed">0</b> agreed</span>
+        <span style="color:var(--warn)"><b id="cChange">0</b> change needed</span>
+      </div>
+      <div class="bar" aria-hidden="true"><span class="b-ok" id="barOk" style="width:0"></span><span class="b-change" id="barChange" style="width:0"></span></div>
+    </div>
+    <div class="tools">
+      <button class="chip" data-filter="all" aria-pressed="true">All</button>
+      <button class="chip" data-filter="open" aria-pressed="false">Not answered</button>
+      <button class="chip" data-filter="change" aria-pressed="false">Change needed</button>
+      <button class="chip" data-filter="agreed" aria-pressed="false">Agreed</button>
+      <span id="tagChips" style="display:contents"></span>
+      <label class="search"><span class="visually-hidden" style="position:absolute;left:-9999px">Search rules</span><input id="q" type="search" placeholder="Search"></label>
+      <button class="btn-quiet" id="copyBtn" type="button">Copy answers</button>
+    </div>
+  </div>
+
+  <nav class="toc" id="toc" aria-label="Sections"></nav>
+  <main id="groups"></main>
+  <div class="empty" id="noMatch" hidden>No rules match this filter.</div>
+
+  <section id="final" aria-labelledby="signHead">
+    <h2 id="signHead">Final approval</h2>
+    <p class="group-intro">Once every item has an answer, record your final decision here. You can change it later; the latest decision is the one that counts.</p>
+    <div class="signcard">
+      <div id="signedBox" hidden></div>
+      <fieldset style="border:0;padding:0;margin:0" class="choices" id="signChoices">
+        <legend class="eyebrow" style="margin-bottom:6px">Your decision</legend>
+        <label><input type="radio" name="outcome" value="approved" id="o-approved"><span><b>Approved.</b> Everything above is as we expect.</span></label>
+        <label><input type="radio" name="outcome" value="approved-with-changes" id="o-awc"><span><b>Approved, with the changes marked above.</b> Go ahead, and make those changes.</span></label>
+        <label><input type="radio" name="outcome" value="rejected" id="o-rejected"><span><b>Not approved.</b> We need to discuss this before it goes live.</span></label>
+      </fieldset>
+      <label for="signNote" class="eyebrow">Anything else (optional)</label>
+      <textarea id="signNote" placeholder="Any overall comments"></textarea>
+      <div class="note-row">
+        <button class="btn-primary" id="signBtn" type="button" disabled>Record decision</button>
+        <span class="who" id="signHint"></span>
+      </div>
+    </div>
+    <div class="activity" id="activityBox" hidden>
+      <h3 class="eyebrow">Recent activity</h3>
+      <ul id="activity"></ul>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+/* ---------- Content ---------- */
+/* Each item id is permanent: it keys the saved answer. Never rename an id once published. */
+/* Tags are optional. Each item may carry `tag` (a key of TAGS) and `outcome` (short text shown beside the tag).
+   Tones: blue, violet, grey. Delete TAGS entries you don't use; with no tags at all the legend and chips disappear. */
+const TAGS = {
+  auto: { label: "Automatic", tone: "blue", hint: "The system does this by itself. Nobody has to do anything." },
+  manual: { label: "Manual", tone: "violet", hint: "A person has to do this by hand." },
+  none: { label: "Not done", tone: "grey", hint: "This doesn't happen at all." },
+};
+const TAGS_TITLE = "What the tags mean";
+
+/* EXAMPLE CONTENT: replace with the real items. Item ids are permanent keys for saved answers; never rename one once published. */
+const GROUPS = [
+  { id: "basics", code: "A", title: "How it works",
+    intro: "These items describe the normal path.",
+    items: [
+      { id: "basics-1", code: "A1", title: "A customer cancels before the start date", tag: "auto", outcome: "Refunded to the card",
+        detail: "The refund goes back to the card that paid, within a few minutes." },
+      { id: "basics-2", code: "A2", title: "A customer cancels after the start date", tag: "none",
+        detail: "Access continues to the end of the paid period." },
+      { id: "basics-3", code: "A3", title: "A payment can't be refunded automatically", tag: "manual", outcome: "Staff refund it",
+        list: ["Staff are emailed with the details.", "They refund it in the payment dashboard."] },
+    ] },
+  { id: "gaps", code: "B", title: "Gaps found", kind: "gap",
+    intro: "Choose Leave as is, or Fix it.",
+    items: [
+      { id: "gap-1", code: "B1", kind: "gap", title: "Failed refunds alert nobody in one case",
+        detail: "Describe the gap in plain words: what happens today and who is affected." },
+    ] },
+];
+
+/* ---------- State ---------- */
+const S = {
+  decisions: {},      // id -> {status, note, by, at}
+  signoff: null,
+  log: [],
+  filter: "all",
+  how: "all",
+  q: "",
+  db: null,
+  user: null,
+  uid: null,
+  readOnly: false,
+  shared: false,      // true when answers are saved for everyone
+  openNotes: new Set(),
+};
+const ITEMS = GROUPS.flatMap(g => g.items.map(it => ({ ...it, group: g.id })));
+const BY_ID = Object.fromEntries(ITEMS.map(it => [it.id, it]));
+const LS_KEY = "approval-page-" + location.pathname;
+
+/* ---------- Helpers ---------- */
+const $ = (sel, root = document) => root.querySelector(sel);
+function el(tag, attrs = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
+    if (k === "class") n.className = v;
+    else if (k === "text") n.textContent = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) if (kid != null) n.append(kid.nodeType ? kid : document.createTextNode(kid));
+  return n;
+}
+function fmtTime(ms) {
+  try { return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(ms)); }
+  catch { return ""; }
+}
+let toastTimer;
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
+}
+const LABELS = {
+  rule: { agreed: "Agreed", change: "Change needed" },
+  gap: { agreed: "Leave as is", change: "Fix it" },
+};
+function labelFor(it, status) { return (LABELS[it.kind || "rule"] || LABELS.rule)[status] || ""; }
+function tagOf(it) { return it.tag && TAGS[it.tag] ? it.tag : null; }
+function outcomeOf(it) { return typeof it.outcome === "string" ? it.outcome : ""; }
+function howRow(it) {
+  const t = tagOf(it), o = outcomeOf(it);
+  if (!t && !o) return null;
+  return el("div", { class: "how-row" },
+    t ? el("span", { class: "how", "data-h": TAGS[t].tone, text: TAGS[t].label }) : null,
+    o ? el("span", { class: "dest", text: o }) : null);
+}
+function renderTags() {
+  const used = Object.keys(TAGS).filter(k => ITEMS.some(it => tagOf(it) === k));
+  if (!used.length) return;
+  const legend = $("#legend");
+  const dl = el("dl", {});
+  for (const k of used) {
+    const n = ITEMS.filter(it => tagOf(it) === k).length;
+    dl.append(el("dt", {}, el("span", { class: "how", "data-h": TAGS[k].tone, text: TAGS[k].label })),
+      el("dd", {}, TAGS[k].hint + " ", el("span", { class: "mono", text: "(" + n + (n === 1 ? " item)" : " items)") })));
+  }
+  legend.append(el("strong", { id: "legendHead", text: TAGS_TITLE }), dl);
+  legend.hidden = false;
+  const chips = $("#tagChips");
+  chips.append(el("span", { "aria-hidden": "true", style: "width:1px;height:20px;background:var(--line)" }));
+  for (const k of ["all", ...used]) {
+    const c = el("button", { class: "chip", type: "button", "data-how": k, "aria-pressed": String(k === "all"), text: k === "all" ? "Any tag" : TAGS[k].label });
+    c.addEventListener("click", () => {
+      S.how = k;
+      for (const o of document.querySelectorAll(".chip[data-how]")) o.setAttribute("aria-pressed", String(o === c));
+      applyFilter();
+    });
+    chips.append(c);
+  }
+}
+
+/* ---------- Static render (complete without any saved data) ---------- */
+function renderStatic() {
+  const toc = $("#toc"), root = $("#groups");
+  for (const g of GROUPS) {
+    toc.append(el("a", { href: "#" + g.id, text: g.title }));
+    const list = el("div", { class: "list" });
+    for (const it of g.items) list.append(renderItem(it));
+    const agreeAll = el("button", { class: "btn-quiet", type: "button", "data-group": g.id, text: g.kind === "gap" ? "Mark the rest “Leave as is”" : "Agree to the rest of this section" });
+    agreeAll.addEventListener("click", () => agreeRest(g));
+    root.append(el("section", { class: "group", id: g.id, "aria-labelledby": g.id + "-h" },
+      el("div", { class: "group-head" },
+        el("div", {}, el("div", { class: "code mono", text: "Section " + g.code }), el("h2", { id: g.id + "-h", text: g.title })),
+        agreeAll),
+      g.intro ? el("p", { class: "group-intro", text: g.intro }) : null,
+      list));
+  }
+  toc.append(el("a", { href: "#final", text: "Final approval" }));
+  $("#cTotal").textContent = ITEMS.length;
+  $("#itemTotal").textContent = ITEMS.length + " items in " + GROUPS.length + " sections";
+  renderTags();
+}
+
+function renderItem(it) {
+  const detail = el("div", { class: "detail" });
+  if (it.detail) detail.append(el("p", { text: it.detail }));
+  if (it.list) detail.append(el("ul", {}, it.list.map(x => el("li", { text: x }))));
+  if (it.quotes) for (const q of it.quotes) detail.append(el("p", { class: "quote" }, el("b", { text: q.when + ": " }), "“" + q.text + "”"));
+  const seg = el("div", { class: "seg", role: "group", "aria-label": "Answer for " + it.code },
+    el("button", { type: "button", "data-v": "agreed", "aria-pressed": "false", text: labelFor(it, "agreed") }),
+    el("button", { type: "button", "data-v": "change", "aria-pressed": "false", text: labelFor(it, "change") }));
+  seg.addEventListener("click", e => { const b = e.target.closest("button[data-v]"); if (b) choose(it.id, b.dataset.v); });
+  const row = el("article", { class: "item", id: "item-" + it.id, "data-id": it.id, "data-status": "open" },
+    el("div", { class: "ref mono", text: it.code }),
+    el("div", { class: "body" },
+      el("div", { class: "title", text: it.title }),
+      howRow(it),
+      detail),
+    el("div", { class: "decide" }, seg, el("div", { class: "who" })),
+    el("div", { class: "note" }));
+  return row;
+}
+
+/* ---------- Dynamic render ---------- */
+async function renderDecisions() {
+  const nm = {};
+  for (const it of ITEMS) paintItem(it, nm);
+  paintCounts();
+  paintSignoff(nm);
+  paintActivity(nm);
+  applyFilter();
+}
+
+function paintItem(it, nm) {
+  const row = document.getElementById("item-" + it.id);
+  if (!row) return;
+  const d = S.decisions[it.id];
+  const status = d ? d.status : "open";
+  row.dataset.status = status;
+  for (const b of row.querySelectorAll(".seg button")) {
+    b.setAttribute("aria-pressed", String(b.dataset.v === status));
+    b.disabled = S.readOnly;
+  }
+  const who = row.querySelector(".who");
+  who.replaceChildren();
+  if (d && d.at) {
+    who.append((S.shared ? labelFor(it, status) + " · " : "") + fmtTime(d.at));
+    if (!S.readOnly) {
+      who.append(" · ");
+      who.append(el("button", { class: "linkish", type: "button", text: "Clear", onclick: () => clearDecision(it.id) }));
+    }
+  }
+  const note = row.querySelector(".note");
+  const ta = note.querySelector("textarea");
+  if (ta && document.activeElement === ta) return; // don't disturb someone typing
+  note.replaceChildren();
+  const editing = S.openNotes.has(it.id) && !S.readOnly;
+  if (editing) {
+    const t = el("textarea", { id: "note-" + it.id, "aria-label": "Note for " + it.code,
+      placeholder: status === "change" ? "What should happen instead?" : "Add a note (optional)" });
+    t.value = (d && d.note) || "";
+    const save = el("button", { class: "btn-primary", type: "button", text: "Save note" });
+    save.addEventListener("click", () => saveNote(it.id, t.value));
+    const cancel = el("button", { class: "linkish", type: "button", text: "Cancel" });
+    cancel.addEventListener("click", () => { S.openNotes.delete(it.id); paintItem(it, nm); });
+    note.append(t, el("div", { class: "note-row" }, save, cancel));
+  } else if (d && d.note) {
+    note.append(el("div", { class: "note-saved", text: d.note }));
+    if (!S.readOnly) note.append(el("div", { class: "note-row" }, el("button", { class: "linkish", type: "button", text: "Edit note", onclick: () => { S.openNotes.add(it.id); paintItem(it, nm); focusNote(it.id); } })));
+  } else if (!S.readOnly) {
+    note.append(el("div", { class: "note-row" }, el("button", { class: "linkish", type: "button", text: status === "change" ? "Say what should change" : "Add a note", onclick: () => { S.openNotes.add(it.id); paintItem(it, nm); focusNote(it.id); } })));
+  }
+}
+function focusNote(id) { const t = document.getElementById("note-" + id); if (t) t.focus(); }
+
+function paintCounts() {
+  let agreed = 0, change = 0;
+  for (const it of ITEMS) { const d = S.decisions[it.id]; if (d && d.status === "agreed") agreed++; else if (d && d.status === "change") change++; }
+  const total = ITEMS.length, answered = agreed + change;
+  $("#cAnswered").textContent = answered; $("#cAgreed").textContent = agreed; $("#cChange").textContent = change;
+  $("#barOk").style.width = (agreed / total * 100) + "%";
+  $("#barChange").style.width = (change / total * 100) + "%";
+  const remaining = total - answered;
+  const btn = $("#signBtn");
+  const picked = document.querySelector('input[name="outcome"]:checked');
+  btn.disabled = S.readOnly || remaining > 0 || !picked;
+  $("#signHint").textContent = S.readOnly ? "You can view this page but cannot record answers." :
+    remaining > 0 ? remaining + (remaining === 1 ? " rule still needs" : " rules still need") + " an answer." :
+    !picked ? "Choose a decision above." : "";
+  S.counts = { agreed, change, total };
+}
+
+function paintSignoff(nm) {
+  const box = $("#signedBox");
+  const s = S.signoff;
+  if (!s) { box.hidden = true; return; }
+  const words = { "approved": "Approved", "approved-with-changes": "Approved, with the changes marked above", "rejected": "Not approved" };
+  box.hidden = false;
+  box.className = "signed";
+  box.dataset.o = s.outcome === "rejected" ? "rejected" : (s.outcome === "approved" ? "approved" : "awc");
+  box.replaceChildren(
+    el("div", {}, el("b", { text: words[s.outcome] || s.outcome })),
+    el("div", { class: "who", style: "text-align:left", text: "Recorded · " + fmtTime(s.at) +
+      (s.counts ? " · " + s.counts.agreed + " agreed, " + s.counts.change + " change needed" : "") }),
+    s.note ? el("p", { style: "white-space:pre-wrap;margin-top:6px", text: s.note }) : null);
+}
+
+function paintActivity(nm) {
+  const box = $("#activityBox"), ul = $("#activity");
+  if (!S.shared || !S.log.length) { box.hidden = true; return; }
+  box.hidden = false;
+  ul.replaceChildren(...S.log.slice(0, 20).map(l => {
+    const it = BY_ID[l.item];
+    let what;
+    if (l.kind === "signoff") what = "Final decision recorded";
+    else if (l.kind === "bulk") what = "Rest of section " + (l.group || "") + " agreed";
+    else if (l.kind === "clear") what = "Answer cleared on " + (it ? it.code : l.item);
+    else if (l.kind === "note") what = "Note updated on " + (it ? it.code : l.item);
+    else what = (it ? it.code : l.item) + " marked “" + (it ? labelFor(it, l.status) : l.status) + "”";
+    return el("li", { text: what + " · " + fmtTime(l.at) });
+  }));
+}
+
+function applyFilter() {
+  const q = S.q.trim().toLowerCase();
+  let shown = 0;
+  for (const g of GROUPS) {
+    let groupShown = 0;
+    for (const it of g.items) {
+      const d = S.decisions[it.id];
+      const status = d ? d.status : "open";
+      const okFilter = (S.filter === "all" || S.filter === status) && (S.how === "all" || tagOf(it) === S.how);
+      const hay = (it.code + " " + it.title + " " + (it.detail || "") + " " + (it.list || []).join(" ") + " " + outcomeOf(it) + " " + (tagOf(it) ? TAGS[tagOf(it)].label : "") + " " + ((d && d.note) || "")).toLowerCase();
+      const okQ = !q || hay.includes(q);
+      const row = document.getElementById("item-" + it.id);
+      row.hidden = !(okFilter && okQ);
+      if (!row.hidden) groupShown++;
+    }
+    const sec = document.getElementById(g.id);
+    sec.hidden = groupShown === 0;
+    const bulk = sec.querySelector("button[data-group]");
+    bulk.hidden = S.readOnly || g.items.every(it => S.decisions[it.id]);
+    shown += groupShown;
+  }
+  $("#noMatch").hidden = shown > 0;
+}
+
+/* ---------- Writes ---------- */
+function persistLocal() {
+  if (S.shared) return;
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ decisions: S.decisions, signoff: S.signoff })); } catch { /* storage may be blocked */ }
+}
+async function guard(fn) {
+  try { await fn(); return true; }
+  catch (e) {
+    const code = e && e.code;
+    if (code === "locked") {
+      S.readOnly = true; showBanner("This page no longer accepts answers. The answers below are final.", "warn");
+      renderDecisions();
+    } else if (code === "quota" || code === "too_large") {
+      toast("That couldn't be saved: " + ((e && e.message) || "it is too large") + ".");
+    } else if (code === "rate_limited") {
+      toast("Too many changes at once. Wait a minute and try again.");
+    } else {
+      toast("Couldn't save. Check your connection and try again.");
+    }
+    return false;
+  }
+}
+async function logEntry(entry) {
+  if (!S.shared) return;
+  try { await S.db.collection("log").add({ ...entry, at: Date.now() }); } catch { /* the log is a convenience */ }
+}
+
+async function choose(id, status) {
+  if (S.readOnly) return;
+  const prev = S.decisions[id];
+  if (prev && prev.status === status) return;
+  const next = { status, note: (prev && prev.note) || "", at: Date.now() };
+  if (status === "change" && !next.note) S.openNotes.add(id);
+  if (!S.shared) { S.decisions[id] = next; persistLocal(); renderDecisions().then(() => status === "change" && focusNote(id)); return; }
+  S.decisions[id] = next; renderDecisions().then(() => status === "change" && !next.note && focusNote(id));
+  const ok = await guard(() => S.db.doc("decisions/" + id).set(next));
+  if (ok) logEntry({ kind: "decision", item: id, status });
+  else { if (prev) S.decisions[id] = prev; else delete S.decisions[id]; renderDecisions(); }
+}
+
+async function saveNote(id, text) {
+  const note = text.trim().slice(0, 4000);
+  const prev = S.decisions[id];
+  S.openNotes.delete(id);
+  const next = prev ? { ...prev, note, at: Date.now() } : { status: "change", note, at: Date.now() };
+  S.decisions[id] = next;
+  if (!S.shared) { persistLocal(); renderDecisions(); toast("Note saved on this device"); return; }
+  renderDecisions();
+  const ok = await guard(() => S.db.doc("decisions/" + id).set(next));
+  if (ok) { toast("Note saved"); logEntry({ kind: "note", item: id }); }
+}
+
+async function clearDecision(id) {
+  delete S.decisions[id];
+  S.openNotes.delete(id);
+  if (!S.shared) { persistLocal(); renderDecisions(); return; }
+  renderDecisions();
+  const ok = await guard(() => S.db.doc("decisions/" + id).delete());
+  if (ok) logEntry({ kind: "clear", item: id });
+}
+
+async function agreeRest(g) {
+  if (S.readOnly) return;
+  const todo = g.items.filter(it => !S.decisions[it.id]);
+  if (!todo.length) return;
+  const at = Date.now();
+  for (const it of todo) S.decisions[it.id] = { status: "agreed", note: "", at };
+  renderDecisions();
+  if (!S.shared) { persistLocal(); return; }
+  for (const it of todo) {
+    const ok = await guard(() => S.db.doc("decisions/" + it.id).set({ status: "agreed", note: "", at }));
+    if (!ok) return;
+  }
+  logEntry({ kind: "bulk", group: g.code, count: todo.length });
+  toast(todo.length + " rules marked " + (g.kind === "gap" ? "“Leave as is”" : "agreed"));
+}
+
+async function recordSignoff() {
+  const picked = document.querySelector('input[name="outcome"]:checked');
+  if (!picked || S.readOnly) return;
+  const c = S.counts || { agreed: 0, change: 0, total: ITEMS.length };
+  const rec = { outcome: picked.value, note: $("#signNote").value.trim().slice(0, 4000), at: Date.now(), counts: { agreed: c.agreed, change: c.change, total: c.total } };
+  S.signoff = rec;
+  if (!S.shared) { persistLocal(); renderDecisions(); toast("Decision saved on this device. Use Copy answers to send it."); return; }
+  renderDecisions();
+  const ok = await guard(() => S.db.doc("signoff/final").set(rec));
+  if (ok) { toast("Decision recorded"); logEntry({ kind: "signoff", outcome: rec.outcome }); }
+}
+
+/* ---------- Copy answers ---------- */
+function answersText() {
+  const lines = [document.title + ": answers", ""];
+  for (const g of GROUPS) {
+    lines.push("Section " + g.code + ": " + g.title);
+    for (const it of g.items) {
+      const d = S.decisions[it.id];
+      const t = tagOf(it);
+      lines.push("  " + it.code + "  " + (d ? labelFor(it, d.status).toUpperCase() : "NOT ANSWERED") + "  " + it.title + (t ? "  [" + TAGS[t].label + "]" : ""));
+      if (d && d.note) lines.push("        Note: " + d.note.replace(/\n/g, "\n        "));
+    }
+    lines.push("");
+  }
+  if (S.signoff) {
+    const words = { "approved": "Approved", "approved-with-changes": "Approved, with the changes marked above", "rejected": "Not approved" };
+    lines.push("Final decision: " + (words[S.signoff.outcome] || S.signoff.outcome) + " (" + fmtTime(S.signoff.at) + ")");
+    if (S.signoff.note) lines.push("Comments: " + S.signoff.note);
+  }
+  return lines.join("\n");
+}
+async function copyAnswers() {
+  const text = answersText();
+  try { await navigator.clipboard.writeText(text); toast("Answers copied"); }
+  catch {
+    const ta = el("textarea", { style: "position:fixed;left:-9999px" }); ta.value = text; document.body.append(ta); ta.select();
+    try { document.execCommand("copy"); toast("Answers copied"); } catch { toast("Copy isn't available here"); }
+    ta.remove();
+  }
+}
+
+/* ---------- Wiring ---------- */
+function showBanner(msg, kind) { const b = $("#modeBanner"); b.textContent = msg; b.dataset.kind = kind || ""; b.hidden = false; }
+
+function wire() {
+  for (const c of document.querySelectorAll(".chip[data-filter]")) {
+    c.addEventListener("click", () => {
+      S.filter = c.dataset.filter;
+      for (const o of document.querySelectorAll(".chip[data-filter]")) o.setAttribute("aria-pressed", String(o === c));
+      applyFilter();
+    });
+  }
+  $("#q").addEventListener("input", e => { S.q = e.target.value; applyFilter(); });
+  $("#copyBtn").addEventListener("click", copyAnswers);
+  for (const r of document.querySelectorAll('input[name="outcome"]')) r.addEventListener("change", paintCounts);
+  $("#signBtn").addEventListener("click", recordSignoff);
+}
+
+function loadLocal() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const v = JSON.parse(raw);
+    if (v && v.decisions) S.decisions = v.decisions;
+    if (v && v.signoff) S.signoff = v.signoff;
+  } catch { /* nothing saved */ }
+}
+
+function connect() {
+  const cf = window.cfdocs;
+  if (!cf) {
+    loadLocal();
+    showBanner("Answers here are kept on this device only. When you finish, press Copy answers and send them to whoever shared this page.", "warn");
+    renderDecisions();
+    return;
+  }
+  S.db = cf.db; S.shared = true;
+  const setMode = () => {
+    S.readOnly = !cf.canWrite;
+    if (S.readOnly) showBanner("This page no longer accepts answers. The answers below are final.", "warn");
+    else $("#modeBanner").hidden = true;
+    renderDecisions();
+  };
+  window.addEventListener("cfdocs:mode", setMode);
+  setMode();
+  cf.db.collection("decisions").onSnapshot(snap => {
+    const next = {};
+    for (const d of snap.docs) { const v = d.data(); if (v && BY_ID[d.id] && (v.status === "agreed" || v.status === "change")) next[d.id] = v; }
+    S.decisions = next;
+    renderDecisions();
+  }, () => {});
+  cf.db.doc("signoff/final").onSnapshot(snap => { S.signoff = snap.exists ? snap.data() : null; renderDecisions(); }, () => {});
+  cf.db.collection("log").orderBy("at", "desc").limit(25).onSnapshot(snap => { S.log = snap.docs.map(d => d.data()); renderDecisions(); }, () => {});
+}
+
+renderStatic();
+wire();
+renderDecisions();
+connect();
+</script>

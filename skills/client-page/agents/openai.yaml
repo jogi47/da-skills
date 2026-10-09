@@ -1,0 +1,4 @@
+interface:
+  display_name: "Client Page"
+  short_description: "Shareable pages with saved answers on Cloudflare"
+  default_prompt: "Use $client-page to publish a page with saved answers on Cloudflare, so people without access to an agent can open it by link and respond."
