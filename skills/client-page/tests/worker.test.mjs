@@ -362,3 +362,17 @@ test("the site icon is served as SVG, a 32 px PNG favicon and a 180 px apple-tou
   assert.match(html, /<link rel="apple-touch-icon" href="\/apple-touch-icon\.png">/);
   assert.match(await (await t.call("/")).text(), /rel="icon"/);
 });
+
+test("plain http is redirected to https (except local test servers), and https is pinned with HSTS", async () => {
+  const t = setup();
+  const { id } = await newPage(t);
+  const r = await worker.fetch(new Request(`http://docs.example.test/${id}?x=1`), t.env);
+  assert.equal(r.status, 308);
+  assert.equal(r.headers.get("location"), `https://docs.example.test/${id}?x=1`);
+  const local = await worker.fetch(new Request(`http://127.0.0.1:8799/${id}`), t.env);
+  assert.equal(local.status, 200);
+  const page = await t.call("/" + id);
+  assert.equal(page.headers.get("strict-transport-security"), "max-age=31536000");
+  assert.equal(page.headers.get("referrer-policy"), "no-referrer");
+  assert.equal(page.headers.get("x-robots-tag"), "noindex, nofollow");
+});

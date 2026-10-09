@@ -123,6 +123,8 @@ const ICON = {
   copy: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5V3.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/></svg>',
   more: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.1"/><circle cx="8" cy="8" r="1.1"/><circle cx="12.5" cy="8" r="1.1"/></svg>',
   link: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 6.5A5.5 5.5 0 0 0 3.2 4.8M2.5 2.5v2.8h2.8M2.5 9.5a5.5 5.5 0 0 0 10.3 1.7M13.5 13.5v-2.8h-2.8"/></svg>',
+  eye: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>',
+  hide: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2l12 12M6.6 3.7A6.4 6.4 0 0 1 8 3.5c4.1 0 6.5 4.5 6.5 4.5a12 12 0 0 1-1.9 2.4M10.2 10.6A2 2 0 0 1 6.5 8.6M4.2 5.1A11.6 11.6 0 0 0 1.5 8s2.4 4.5 6.5 4.5c1 0 2-.3 2.8-.7"/></svg>',
   trash: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11M6.5 4.5V3a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5v1.5M4 4.5l.6 8.1a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9l.6-8.1M6.8 7v4M9.2 7v4"/></svg>',
 };
 
@@ -130,7 +132,7 @@ function statusOf(p) {
   return p.archived_at ? "archived" : p.mode === "locked" ? "locked" : "open";
 }
 
-const STATUS_LABEL = { open: "Open", locked: "Locked", archived: "Archived" };
+const STATUS_LABEL = { open: "Open", locked: "Locked", archived: "Hidden" };
 
 export function renderDashboard({ host, email, pages, iconLinks }) {
   const counts = { open: 0, locked: 0, archived: 0 };
@@ -156,12 +158,15 @@ export function renderDashboard({ host, email, pages, iconLinks }) {
   </div>
   <div class="actions">
     ${s === "archived"
-      ? '<span class="btn disabled" title="Archived pages show &quot;not available&quot; to visitors">Hidden</span>'
+      ? `<a class="btn" href="/admin/preview/${esc(p.id)}" target="_blank" rel="noopener" title="Only you can open this; visitors see &quot;not available&quot;">${ICON.eye}<span>Preview</span></a>`
       : `<a class="btn" href="/${esc(p.id)}" target="_blank" rel="noopener">${ICON.open}<span>Open</span></a>`}
     <button class="btn copy" type="button" data-url="${esc(url)}">${ICON.copy}<span class="label">Copy link</span></button>
     <div class="menu-wrap">
       <button class="btn icon more" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="More actions for ${esc(title)}" title="More actions">${ICON.more}</button>
       <div class="menu" role="menu" hidden>
+        ${s === "archived"
+          ? `<button type="button" role="menuitem" class="act" data-act="show">${ICON.eye}<span>Show page again</span><small>The same link works again</small></button>`
+          : `<button type="button" role="menuitem" class="act" data-act="hide">${ICON.hide}<span>Hide page</span><small>Visitors see “not available”; nothing is deleted</small></button>`}
         <button type="button" role="menuitem" class="act" data-act="new-link">${ICON.link}<span>Change link</span><small>The old link stops working</small></button>
         <hr>
         <button type="button" role="menuitem" class="act danger" data-act="delete">${ICON.trash}<span>Delete page</span><small>Permanent, with its answers</small></button>
@@ -293,14 +298,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     <div class="who">Signed in as <b>${esc(email)}</b></div>
   </header>
   <h1>Pages</h1>
-  <p class="summary">${pages.length} ${pages.length === 1 ? "page" : "pages"} · ${counts.open} open · ${counts.locked} locked · ${counts.archived} archived. Only you can see this list; visitors only ever see the page they were sent.</p>
+  <p class="summary">${pages.length} ${pages.length === 1 ? "page" : "pages"} · ${counts.open} open · ${counts.locked} locked · ${counts.archived} hidden. Only you can see this list; visitors only ever see the page they were sent.</p>
   <div class="tools">
     <label class="search"><input id="q" type="search" placeholder="Search titles and descriptions" aria-label="Search pages" autocomplete="off"></label>
     <div class="chips" role="group" aria-label="Filter by status">
       <button class="chip" type="button" data-f="all" aria-pressed="true">All <span>${pages.length}</span></button>
       <button class="chip" type="button" data-f="open" aria-pressed="false">Open <span>${counts.open}</span></button>
       <button class="chip" type="button" data-f="locked" aria-pressed="false">Locked <span>${counts.locked}</span></button>
-      <button class="chip" type="button" data-f="archived" aria-pressed="false">Archived <span>${counts.archived}</span></button>
+      <button class="chip" type="button" data-f="archived" aria-pressed="false">Hidden <span>${counts.archived}</span></button>
     </div>
     <label class="sort">Sort
       <select id="sort" aria-label="Sort pages">
@@ -313,7 +318,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   </div>
   ${pages.length ? `<ul class="list" id="list">\n${rows}\n</ul>` : ""}
   <p class="empty" id="empty"${pages.length ? " hidden" : ""}>${pages.length ? "No pages match." : "No pages yet. Ask Claude to publish one with the client-page skill."}</p>
-  <footer>"Change link" gives a page a new address and turns the old one off. "Delete" removes a page, its saved entries and any files only it uses, for good. Archived pages show "not available" to visitors and can be restored.</footer>
+  <footer>"Hide page" makes a link show "not available" without deleting anything; "Show page again" brings the same link back, and Preview lets you look at a hidden page. "Change link" gives a page a new address and turns the old one off. "Delete" removes a page, its saved entries and any files only it uses, for good.</footer>
 </div>
 <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="m-title">
   <div class="sheet">
@@ -379,7 +384,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     var name = "\u201c" + row.dataset.name + "\u201d", entries = Number(row.dataset.entries);
     mErr.hidden = true; mInput.value = ""; mCancel.textContent = "Cancel"; mGo.hidden = false; mGo.disabled = false;
     mBody.replaceChildren();
-    if (act === "delete") {
+    if (act === "hide") {
+      mTitle.textContent = "Hide " + name + "?";
+      mBody.append(para("Anyone with the link will see \u201cnot available\u201d, and anyone who has it open is told it is no longer available. Nothing is deleted: its " + entries + " saved " + (entries === 1 ? "entry" : "entries") + " and files are kept, you can still preview it from here, and you can show it again with the same link."));
+      mWrap.hidden = true; mGo.textContent = "Hide page"; mGo.className = "btn solid";
+    } else if (act === "show") {
+      mTitle.textContent = "Show " + name + " again?";
+      mBody.append(para("Its link works again, with its saved entries, for anyone who has it."));
+      mWrap.hidden = true; mGo.textContent = "Show page"; mGo.className = "btn solid";
+    } else if (act === "delete") {
       mTitle.textContent = "Delete " + name + "?";
       mBody.append(para("This removes the page and its " + entries + " saved " + (entries === 1 ? "entry" : "entries") + " for good, and its link stops working. Screenshots and files that only this page uses are deleted too. This can't be undone."));
       mWrap.hidden = false; mGo.textContent = "Delete page"; mGo.className = "btn solid danger"; mGo.disabled = true;
@@ -409,7 +422,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (b) { if (!r.ok) throw new Error(b.message || "Something went wrong (" + r.status + ")."); return b; });
     }).then(function (b) {
-      done = true; mGo.hidden = true; mWrap.hidden = true; mCancel.textContent = "Close";
+      done = true;
+      if (act === "hide" || act === "show") { closeModal(); return; }
+      mGo.hidden = true; mWrap.hidden = true; mCancel.textContent = "Close";
       mBody.replaceChildren();
       if (act === "delete") {
         mTitle.textContent = "Deleted";

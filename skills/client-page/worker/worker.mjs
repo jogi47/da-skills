@@ -13,6 +13,9 @@
 //        /apple-touch-icon.png
 //   GET  /_/f/<hash>/<name>              an image, video, audio file or PDF the owner uploaded (R2; Range-aware)
 //   GET  /admin                          the owner's dashboard (behind Cloudflare Access; see dashboard.mjs)
+//   GET  /admin/preview/<id>             owner-only view of any page, hidden ones included (read-only)
+//   GET  /admin/api/pages/<id>/c|d/…     owner-only reads behind that preview
+//   POST /admin/api/pages/<id>/hide|show dashboard action: hide a page from visitors, or show it again
 //   POST /admin/api/pages/<id>/new-link  dashboard action: move the page to a new uuid (old link stops working)
 //   POST /admin/api/pages/<id>/delete    dashboard action: delete the page, its answers and files only it uses
 //   GET  /                               redirects a signed-in owner to /admin; everyone else gets the 404 page
@@ -62,6 +65,8 @@ const CSP = [
 
 const BASE_HEADERS = {
   "x-robots-tag": "noindex, nofollow",
+  // Browsers that have seen the site once always use https for it, so a link is never sent in clear text.
+  "strict-transport-security": "max-age=31536000",
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=()",
@@ -87,6 +92,11 @@ class HttpError extends Error {
 
 async function route(req, env) {
   const url = new URL(req.url);
+  // A page's address is its secret: never serve it over plain http. (Local test servers are exempt.)
+  if (url.protocol === "http:" && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(url.hostname)) {
+    url.protocol = "https:";
+    return new Response(null, { status: 308, headers: { location: url.toString(), "cache-control": "no-store" } });
+  }
   const parts = url.pathname.split("/").filter(Boolean).map(decodePart);
   const method = req.method;
 
@@ -98,6 +108,9 @@ async function route(req, env) {
   }
   if (parts.length === 1 && parts[0] === "admin" && (method === "GET" || method === "HEAD")) return dashboard(req, env, url);
   if (parts[0] === "admin" && parts[1] === "api") return dashboardApi(req, env, url, parts.slice(2));
+  if (parts[0] === "admin" && parts[1] === "preview" && parts.length === 3 && (method === "GET" || method === "HEAD")) {
+    return ownerPreview(req, env, parts[2]);
+  }
   if (parts.length === 1 && parts[0] === "robots.txt") return text("User-agent: *\nDisallow: /\n");
   if (parts.length === 1 && parts[0] === "favicon.ico") return icon(PNG_32, "image/png");
   if (parts.length === 1 && (parts[0] === "apple-touch-icon.png" || parts[0] === "apple-touch-icon-precomposed.png")) {
@@ -147,9 +160,12 @@ async function servePage(env, id) {
   });
 }
 
-function wrap(page) {
-  const boot = JSON.stringify({ id: page.id, title: page.title, mode: page.mode, version: page.version })
-    .replace(/</g, "\\u003c");
+function wrap(page, opts = {}) {
+  const boot = JSON.stringify({
+    id: page.id, title: page.title, mode: opts.preview ? "locked" : page.mode, version: page.version,
+    // The owner's preview reads through the owner-only API, so it works for hidden pages too.
+    ...(opts.preview ? { preview: true, hidden: !!page.archived_at, api: `/admin/api/pages/${page.id}` } : {}),
+  }).replace(/</g, "\\u003c");
   const head = '<meta charset="utf-8">'
     + '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
     + '<meta name="robots" content="noindex,nofollow">'
@@ -175,6 +191,7 @@ function wrap(page) {
 async function dashboardApi(req, env, url, parts) {
   const who = await verifyAccess(req, env);
   if (!who) return notFoundPage();
+  if (req.method === "GET" || req.method === "HEAD") return ownerRead(req, env, parts);
   if (req.method !== "POST") throw new HttpError(405, "method_not_allowed");
   if (req.headers.get("x-cfdocs-admin") !== "1" || req.headers.get("origin") !== `${url.protocol}//${url.host}`) {
     throw new HttpError(403, "forbidden", "This action can only be used from the dashboard.");
@@ -183,10 +200,53 @@ async function dashboardApi(req, env, url, parts) {
   if (res !== "pages" || !UUID_RE.test(id || "")) throw new HttpError(404, "not_found");
   if (action === "delete") return json(await deletePage(env, id));
   if (action === "new-link") return json(await newLink(env, url, id));
+  if (action === "hide" || action === "show") return json(await setHidden(env, url, id, action === "hide"));
   throw new HttpError(404, "not_found");
 }
 
-const FILE_REF_RE = /\/_\/f\/([0-9a-f]{12}\/[A-Za-z0-9._-]{1,120})/g;
+// Hidden pages answer "not available" to visitors; nothing is deleted, and showing brings the same link back.
+async function setHidden(env, url, id, hidden) {
+  const r = await env.DB.prepare(
+    "UPDATE pages SET archived_at = " + (hidden ? "?" : "NULL") + ", rev = rev + 1, updated_at = ? WHERE id = ?"
+  ).bind(...(hidden ? [Date.now(), Date.now(), id] : [Date.now(), id])).run();
+  if (!r.meta || !r.meta.changes) throw new HttpError(404, "not_found", "That page doesn't exist.");
+  return { ok: true, id, hidden, url: pageUrl(url, id) };
+}
+
+// The owner's read-only view of a page, hidden or not. Its runtime reads through ownerRead below.
+async function ownerPreview(req, env, id) {
+  if (!UUID_RE.test(id || "")) return notFoundPage();
+  if (!(await verifyAccess(req, env))) return notFoundPage();
+  const page = await env.DB.prepare(
+    "SELECT id, title, description, html, mode, version, archived_at FROM pages WHERE id = ?"
+  ).bind(id).first();
+  if (!page) return notFoundPage();
+  return new Response(wrap(page, { preview: true }), {
+    headers: { ...BASE_HEADERS, "content-type": "text/html; charset=utf-8", "content-security-policy": CSP, "cache-control": "no-store" },
+  });
+}
+
+// GET /admin/api/pages/<id>/c/<collection> and …/d/<collection>/<doc>: the same answers visitors get,
+// for any page (hidden ones too), always read-only.
+async function ownerRead(req, env, parts) {
+  const [res, id, kind, collection, docId] = parts;
+  if (res !== "pages" || !UUID_RE.test(id || "")) throw new HttpError(404, "not_found");
+  if (kind !== "c" && kind !== "d") throw new HttpError(405, "method_not_allowed"); // actions are POST-only
+  const page = await env.DB.prepare("SELECT id, mode, version, rev FROM pages WHERE id = ?").bind(id).first();
+  if (!page) throw new HttpError(404, "gone", "This page isn't available.");
+  if (!KEY_RE.test(collection || "")) throw new HttpError(400, "invalid", "Bad collection name.");
+  const view = { ...page, mode: "locked" };
+  if (kind === "c" && parts.length === 4) return listCollection(req, env, view, collection);
+  if (kind === "d" && parts.length === 5 && KEY_RE.test(docId || "")) {
+    const rec = await env.DB.prepare(
+      "SELECT id, data, version, updated_at FROM records WHERE page_id = ? AND collection = ? AND id = ?"
+    ).bind(id, collection, docId).first();
+    return json(rec ? { exists: true, ...shapeRecord(rec) } : { exists: false, id: docId });
+  }
+  throw new HttpError(404, "not_found");
+}
+
+const FILE_REF_RE = /\/_\/f\/([0-9a-f]{12,64}\/[A-Za-z0-9._-]{1,120})/g;
 
 // Deletes a page for good: the page, its saved answers, and every uploaded file that no other page uses.
 async function deletePage(env, id) {
@@ -546,9 +606,10 @@ function json(body, status = 200, extra = {}) {
 
 /* ---------------- Files (owner uploads, stored in R2) ---------------- */
 
-// Keys are "<first 12 hex of the file's SHA-256>/<file name>", chosen by the uploader (client-page.sh),
+// Keys are "<first 32 hex of the file's SHA-256>/<file name>", chosen by the uploader (client-page.sh),
 // so the same file always lands at the same URL and is never stored twice.
-const FILE_KEY_RE = /^[0-9a-f]{12}\/[A-Za-z0-9._-]{1,120}$/;
+// New uploads use 32 hex characters (128 bits, as hard to guess as a page's uuid); older 12-character keys still work.
+const FILE_KEY_RE = /^[0-9a-f]{12,64}\/[A-Za-z0-9._-]{1,120}$/;
 const MAX_FILE_BYTES = 100 * 1024 * 1024; // Cloudflare's request-size limit on the free plan
 const FILE_TYPES = new Set([
   "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/svg+xml",

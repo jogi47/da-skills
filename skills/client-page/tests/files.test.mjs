@@ -95,3 +95,13 @@ test("without a bucket the file routes are off, and pages allow same-site media"
   assert.match(csp, /img-src 'self'/);
   assert.match(csp, /media-src 'self'/);
 });
+
+test("128-bit file keys (new uploads) and 48-bit ones (older uploads) both work", async () => {
+  const t = setup();
+  const long = "0123456789abcdef0123456789abcdef/screen.png";
+  assert.equal((await t.upload(long, PNG)).status, 200);
+  assert.equal((await t.call("/_/f/" + long)).status, 200);
+  assert.equal((await t.upload(KEY, PNG)).status, 200);
+  assert.equal((await t.call("/_/f/" + KEY)).status, 200);
+  assert.equal((await t.upload("0123456789a/short.png", PNG)).status, 400, "11 hex is too short");
+});

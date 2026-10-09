@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import worker from "../worker/worker.mjs";
 import { extractDescription } from "../worker/dashboard.mjs";
+import { runtime } from "../worker/runtime.mjs";
 import { fakeD1 } from "./fake-d1.mjs";
 import { fakeR2 } from "./fake-r2.mjs";
 
@@ -244,4 +245,91 @@ test("the dashboard shows Change link and Delete on every row", async () => {
   // The confirmation dialog starts hidden, and its own display rule must not override that.
   assert.match(html, /<div class="modal" id="modal" hidden/);
   assert.match(html, /\[hidden\] \{ display: none !important; \}/);
+});
+
+test("Hide makes the link 'not available' and keeps everything; Show brings the same link back", async () => {
+  const t = setup();
+  const a = await (await t.admin("/pages", "POST", { title: "A", html: "<p>x</p>" })).json();
+  await t.answer(a.id, "x");
+  const token = await jwt();
+  const hid = await t.act(a.id, "hide", { token });
+  assert.equal(hid.status, 200);
+  assert.equal((await hid.json()).hidden, true);
+  assert.equal((await t.call("/" + a.id)).status, 404);
+  assert.equal((await (await t.call(`/${a.id}/api/c/decisions`)).json()).error, "gone");
+  assert.equal(t.env.DB.raw.prepare("SELECT COUNT(*) AS n FROM records WHERE page_id = ?").get(a.id).n, 1, "answers kept");
+  const shown = await t.act(a.id, "show", { token });
+  assert.equal((await shown.json()).hidden, false);
+  assert.equal((await t.call("/" + a.id)).status, 200);
+  assert.equal((await (await t.call(`/${a.id}/api/c/decisions`)).json()).docs.length, 1);
+  // Same protections as the other actions.
+  assert.equal((await t.act(a.id, "hide", {})).status, 404, "no login");
+  assert.equal((await t.act(a.id, "hide", { token, origin: "https://evil.example" })).status, 403, "other site");
+  assert.equal((await t.act(crypto.randomUUID(), "hide", { token })).status, 404, "unknown page");
+});
+
+test("the owner can preview a hidden page read-only; visitors and strangers can't", async () => {
+  const t = setup();
+  const a = await (await t.admin("/pages", "POST", { title: "Secret plan", html: "<p>inside</p>" })).json();
+  await t.answer(a.id, "x");
+  const token = await jwt();
+  await t.act(a.id, "hide", { token });
+  const preview = await t.call("/admin/preview/" + a.id, { headers: { "cf-access-jwt-assertion": token } });
+  assert.equal(preview.status, 200);
+  const html = await preview.text();
+  assert.match(html, /<p>inside<\/p>/);
+  assert.match(html, new RegExp(`"mode":"locked".*"preview":true,"hidden":true,"api":"/admin/api/pages/${a.id}"`));
+  assert.equal((await t.call("/admin/preview/" + a.id)).status, 404, "no login");
+  assert.equal((await t.call("/admin/preview/" + a.id, { headers: { "cf-access-jwt-assertion": await jwt({ email: "x@example.com" }) } })).status, 404, "not the owner");
+  assert.equal((await t.call("/admin/preview/not-a-uuid", { headers: { "cf-access-jwt-assertion": token } })).status, 404);
+  // Reads behind the preview: the owner sees the answers (locked); visitors get "gone".
+  const owner = await (await t.call(`/admin/api/pages/${a.id}/c/decisions`, { headers: { "cf-access-jwt-assertion": token } })).json();
+  assert.equal(owner.mode, "locked");
+  assert.equal(owner.docs.length, 1);
+  const one = await (await t.call(`/admin/api/pages/${a.id}/d/decisions/x`, { headers: { "cf-access-jwt-assertion": token } })).json();
+  assert.equal(one.exists, true);
+  assert.equal((await t.call(`/admin/api/pages/${a.id}/c/decisions`)).status, 404, "reads need the login too");
+  assert.equal((await t.call(`/admin/api/pages/${a.id}/d/decisions/x`, { method: "PUT", headers: { "cf-access-jwt-assertion": token, "x-cfdocs": "1", "content-type": "application/json" }, body: "{}" })).status, 405, "no writes through the preview");
+});
+
+test("the runtime in a preview reads through the owner API and can't write", async () => {
+  const t = setup();
+  const a = await (await t.admin("/pages", "POST", { title: "A", html: "<p>x</p>" })).json();
+  await t.answer(a.id, "x");
+  const token = await jwt();
+  await t.act(a.id, "hide", { token });
+  const urls = [];
+  const savedWindow = globalThis.window, savedFetch = globalThis.fetch;
+  globalThis.window = { __CFDOCS__: { id: a.id, title: "A", mode: "locked", version: 1, preview: true, hidden: true, api: `/admin/api/pages/${a.id}` }, dispatchEvent: () => true };
+  globalThis.fetch = (url, init = {}) => {
+    urls.push(String(url));
+    return worker.fetch(new Request(HOST + url, { ...init, headers: { ...(init.headers || {}), "cf-access-jwt-assertion": token } }), t.env);
+  };
+  let off = () => {};
+  try {
+    const cf = runtime();
+    assert.equal(cf.canWrite, false);
+    const got = [];
+    off = cf.db.collection("decisions").onSnapshot(sn => got.push(sn.size));
+    await new Promise(r => setTimeout(r, 40));
+    assert.deepEqual(got, [1]);
+    assert.ok(urls.every(u => u.startsWith(`/admin/api/pages/${a.id}/`)), urls.join(" "));
+    await assert.rejects(cf.db.doc("decisions/y").set({ a: 1 }));
+  } finally {
+    off();
+    globalThis.window = savedWindow; globalThis.fetch = savedFetch;
+  }
+});
+
+test("the dashboard calls archived pages Hidden and offers Preview and Show page again", async () => {
+  const t = setup();
+  const a = await (await t.admin("/pages", "POST", { title: "Gone quiet", html: "<p>x</p>" })).json();
+  await t.admin("/pages", "POST", { title: "Still open", html: "<p>y</p>" });
+  await t.act(a.id, "hide", { token: await jwt() });
+  const html = await (await t.dash(await jwt())).text();
+  assert.match(html, /class="status" data-s="archived">Hidden</);
+  assert.match(html, new RegExp(`href="/admin/preview/${a.id}"`));
+  assert.match(html, /data-act="show"/);
+  assert.match(html, /data-act="hide"/);
+  assert.ok(!/>Archived</.test(html));
 });

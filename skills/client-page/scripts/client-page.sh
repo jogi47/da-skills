@@ -871,7 +871,7 @@ upload_file() {
   sha="$(sha256_of "$f")"
   name="$(basename "$f" | sed -E 's/[^A-Za-z0-9._-]+/-/g; s/^-+//' | cut -c1-120)"
   [[ -n "$name" ]] || name="file.${f##*.}"
-  key="${sha:0:12}/$name"
+  key="${sha:0:32}/$name"   # 128 bits: as hard to guess as a page's uuid
   if [[ "$(curl -s -o /dev/null -w '%{http_code}' -I "$(site)/_/f/$key")" == 200 ]]; then
     echo "  = $f (already uploaded)" >&2
   else
@@ -1037,7 +1037,7 @@ cmd_list() {
   admin GET "/pages" | jq -r '.pages[] | [
       .id, .mode, "v\(.version)", "\(.records) saved",
       (.updated_at / 1000 | strftime("%Y-%m-%d %H:%M")),
-      (if .archived_at then "ARCHIVED" else "" end), .title
+      (if .archived_at then "HIDDEN" else "" end), .title
     ] | @tsv'
 }
 
@@ -1107,7 +1107,8 @@ Pages:
   html UUID                    print the page's current HTML
   records UUID [COLLECTION]    dump saved answers as JSON
   lock UUID | unlock UUID      stop or resume accepting answers
-  archive UUID | restore UUID  hide the page from visitors, or bring it back (nothing is deleted)
+  hide UUID | show UUID        hide the page (its link shows "not available"; nothing is deleted), or
+                               bring the same link back. Also called archive / restore
   new-link UUID                give the page a new uuid; the old link stops working, answers move with it
   delete UUID --yes            delete the page, its answers and files only it uses, for good
   rm-record UUID COLLECTION ID remove one saved document (e.g. a test probe)
@@ -1143,8 +1144,8 @@ main() {
     records) cmd_records "${1:-}" "${2:-}" ;;
     lock) patch_page "${1:-}" '{"mode":"locked"}' ;;
     unlock) patch_page "${1:-}" '{"mode":"open"}' ;;
-    archive) patch_page "${1:-}" '{"archived":true}' ;;
-    restore) patch_page "${1:-}" '{"archived":false}' ;;
+    archive|hide) patch_page "${1:-}" '{"archived":true}' ;;
+    restore|show) patch_page "${1:-}" '{"archived":false}' ;;
     rm-record) cmd_rm_record "${1:-}" "${2:-}" "${3:-}" ;;
     new-link) cmd_new_link "${1:-}" ;;
     delete) cmd_delete "$@" ;;

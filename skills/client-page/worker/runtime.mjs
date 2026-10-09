@@ -12,7 +12,7 @@ export function runtime() {
   "use strict";
   var boot = (typeof window !== "undefined" && window.__CFDOCS__) || {};
   var KEY_RE = /^[A-Za-z0-9_.~:@+-]{1,128}$/;
-  var base = "/" + boot.id + "/api";
+  var base = boot.api || ("/" + boot.id + "/api");
   var state = { mode: boot.mode || "locked", version: boot.version || 0, notified: false, gone: false };
   var pollers = new Map();
 
@@ -103,6 +103,19 @@ export function runtime() {
       bar.append(btn);
     }
     document.body.append(bar);
+  }
+
+  // The owner's preview of a page (from the dashboard) is read-only and says so.
+  if (boot.preview && typeof document !== "undefined" && document.addEventListener) {
+    document.addEventListener("DOMContentLoaded", function () {
+      var tag = document.createElement("div");
+      tag.setAttribute("role", "note");
+      tag.textContent = boot.hidden ? "Owner preview \u00b7 hidden: visitors see \u201cnot available\u201d" : "Owner preview \u00b7 read-only";
+      tag.style.cssText = "position:fixed;left:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:2147483000;"
+        + "padding:6px 12px;border-radius:999px;background:#1c1c1a;color:#fafaf9;"
+        + "font:600 12px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.25);pointer-events:none";
+      document.body.append(tag);
+    });
   }
 
   /* ---------- Live collections (polling) ---------- */
