@@ -1,6 +1,6 @@
 ---
 name: client-page
-description: Publish a web page with saved answers at a public link (https://<site>/<uuid> on Cloudflare), so people without Claude access, such as clients, can open it and respond anonymously. Works on the user's own domain or on Cloudflare's free workers.dev address, and guides first-time setup from zero with no Cloudflare CLI needed. Use when the user wants a shareable page for someone outside Claude, such as an approval sheet, checklist, questionnaire, report or tracker, instead of a claude.ai artifact; also to set the hosting up, or to update, lock, archive or read the answers on such a page, or to change the hosting Worker itself.
+description: Publish a web page with saved answers at a public link (https://<site>/<uuid> on Cloudflare), so people without Claude access, such as clients, can open it and respond anonymously. Pages can show images, screenshots and short videos that the creator uploads (never visitors), and the owner gets a login-protected dashboard listing every page. Works on the user's own domain or on Cloudflare's free workers.dev address, and guides first-time setup from zero with no Cloudflare CLI needed. Use when the user wants a shareable page for someone outside Claude, such as an approval sheet, checklist, questionnaire, report or tracker, instead of a claude.ai artifact; also to set the hosting up, or to update, lock, archive or read the answers on such a page, or to change the hosting Worker itself.
 ---
 
 # client-page
@@ -28,6 +28,8 @@ installed anything from Cloudflare can still use it. The only tools needed are `
 | `worker/worker.mjs` | the Worker: serves pages, the visitor API and the admin API |
 | `worker/runtime.mjs` | the in-page runtime, served at `/_/rt.js?v=<hash>` as `window.cfdocs` |
 | `worker/schema.sql` | D1 tables: `pages`, `records`, `hits` |
+| `worker/dashboard.mjs` | the owner's dashboard at `/admin` and its Cloudflare Access check |
+| `worker/icons.mjs` | the site icon (SVG and PNGs) |
 | `templates/approval-page.html` | a working approval page: Agreed / Change needed per item, tags, final decision |
 | `tests/` | `node --test tests/*.test.mjs` runs the Worker against an in-memory SQLite D1 |
 
@@ -125,6 +127,9 @@ then `archive` it and tell the user the site is ready.
      token. Use no literal colours in components.
    - **Layout:** works at phone width. Keep a 16px side gutter and no sideways page scroll; wide tables
      scroll inside their own `overflow-x: auto` box.
+   - **Wide screens:** a reading column looks lost on a big monitor, so scale the page up there. Clients
+     open these links full screen, not in a narrow panel:
+     `@media (min-width: 1440px) { body { zoom: 1.12 } }`, `1800px → 1.25`, `2300px → 1.4`.
    - **Fonts and type:** Google Fonts only, always with a fallback stack. Set a clear type scale, keep
      text near 65 characters per line, and use `font-variant-numeric: tabular-nums` for numbers.
    - **Libraries** come only from cdnjs, jsDelivr or unpkg, pinned to an exact version. The page's
@@ -141,6 +146,72 @@ then `archive` it and tell the user the site is ready.
    link and say that anyone with it can open the page and answer.
 6. **Look once** at the live URL in the built-in browser (navigate, screenshot, read console
    messages). Fix anything clearly broken and republish once.
+
+## Images, screenshots and video
+
+Only the page's creator adds files. Visitors can never upload anything. Files live in Cloudflare R2
+(10 GB free, no download fees) and are served from `https://<site>/_/f/<hash>/<name>`.
+
+- **One-time setup:** `scripts/client-page.sh files-setup`. If R2 isn't on yet, or the token lacks
+  Account · Workers R2 Storage · Edit, it prints the two steps for the user and changes nothing.
+  `doctor` shows the status under "Images and video".
+- **The easy way:**
+  - Put the files next to the page in the temp directory, e.g. `shots/login.png` or `media/demo.mp4`.
+  - Reference them by relative path in `src=`, `data-src=`, `href=` or `poster=`.
+  - `publish` uploads each referenced file and points the page at the uploaded copy.
+  - Same content means the same address, so republishing uploads nothing twice.
+  - Use `--assets DIR` when the files live elsewhere, or `--no-assets` to skip.
+- **By hand:** `upload FILE…` prints each file's URL. `files` lists uploads, and `rm-file <hash>/<name>`
+  removes one.
+- **Types:** png, jpg, gif, webp, avif, svg; mp4, webm, mov; mp3, m4a, wav, ogg; pdf. Each file can be up
+  to 100 MB. For longer videos, link out to an unlisted YouTube or Vimeo video. Pages can't embed other
+  sites (iframes are blocked).
+- **Markup:**
+  - Images: `<img src="shots/x.png" alt="…" loading="lazy">`.
+  - Video: `<video src="media/x.mp4" controls preload="metadata" playsinline>`. Seeking works because the
+    Worker answers byte-range requests.
+  - Give images real `alt` text, and a fixed `aspect-ratio` so the page doesn't jump while they load.
+- **Privacy:** a file is public to anyone who has its URL. The hash in the URL makes it unguessable,
+  and it stays up after its page is archived, until `rm-file`. Screenshots must not show real people's
+  data such as names, emails or payment details. Use test data, or blur it before uploading.
+- **Copying a claude.ai artifact that has files** (like a progress page with a `shots/` folder):
+  1. List its files with the Artifact tool (`action: "list"`, `scope: "files"`).
+  2. Download them with `action: "read"` and `paths`, into the temp directory, keeping their relative
+     paths.
+  3. Read the page HTML in full. The saved file starts with the artifact's own wrapper
+     (`<!doctype html>…<body>` on line 1) and ends with `</body></html>`. Drop both, so the page is a
+     fragment again.
+  4. If the page saves data, replace `claude.use("db")` with `cfdocs.db`.
+  5. Publish. The files upload six at a time, so 60 screenshots take about 20 seconds.
+
+## Owner dashboard
+
+`https://<site>/admin` lists every page:
+- title and short description;
+- open, locked or archived;
+- number of saved entries and last update;
+- a "Copy link" and an "Open" button.
+
+It has search, a status filter and sorting. Only the owner can open it, behind a Cloudflare Access
+login (an emailed one-time code). The Worker also verifies Access's signed token and the email itself.
+Opening the bare site address while signed in redirects there. Everyone else gets the normal "not
+available" page.
+
+- **One-time setup:** `scripts/client-page.sh admin-setup you@example.com[,other@example.com]`, after the
+  user says go. If Zero Trust isn't set up, or the token lacks the two Access rows, it prints the steps
+  and changes nothing:
+  - Account · Access: Apps and Policies · Edit
+  - Account · Access: Organizations, Identity Providers, and Groups · Edit
+
+  With that Edit row, it adds the emailed one-time PIN login itself. With only Read, it tells the user
+  to add it in Cloudflare One: Integrations → Identity providers → Add new identity provider →
+  One-time PIN.
+- **Re-running** with a different email list replaces who may sign in.
+- **Descriptions:**
+  - Each page's description comes from `publish --description`, else its `<meta name="description">`,
+    else its lede (`<p class="lede">`) or first paragraph.
+  - It also feeds link previews (`og:description`) when the link is pasted into chat apps.
+  - Write a lede that says what the page is for.
 
 ## Updating, locking, reading answers
 

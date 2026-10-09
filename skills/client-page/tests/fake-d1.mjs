@@ -4,7 +4,13 @@ import { readFileSync } from "node:fs";
 
 export function fakeD1(schemaPath) {
   const db = new DatabaseSync(":memory:");
-  if (schemaPath) db.exec(readFileSync(schemaPath, "utf8"));
+  if (schemaPath) {
+    // Same rule as `client-page.sh schema`: run statements one by one; an ADD COLUMN that already exists is fine.
+    const sql = readFileSync(schemaPath, "utf8").replace(/--.*$/gm, "");
+    for (const stmt of sql.split(";").map(s => s.trim()).filter(Boolean)) {
+      try { db.exec(stmt); } catch (e) { if (!/duplicate column name/i.test(e.message)) throw e; }
+    }
+  }
   const plain = r => (r ? { ...r } : r);
   function prepare(sql) {
     let args = [];

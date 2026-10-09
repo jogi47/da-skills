@@ -340,3 +340,25 @@ test("runtime: an archived page stops polling, tells listeners once and fires cf
     globalThis.fetch = savedFetch;
   }
 });
+
+test("the site icon is served as SVG, a 32 px PNG favicon and a 180 px apple-touch-icon, and linked from pages", async () => {
+  const t = setup();
+  const svg = await t.call("/_/icon.svg");
+  assert.equal(svg.headers.get("content-type"), "image/svg+xml");
+  assert.match(await svg.text(), /^<svg /);
+  for (const [path, size] of [["/favicon.ico", 32], ["/apple-touch-icon.png", 180]]) {
+    const r = await t.call(path);
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get("content-type"), "image/png");
+    const b = new Uint8Array(await r.arrayBuffer());
+    assert.deepEqual([...b.subarray(1, 4)].map(c => String.fromCharCode(c)).join(""), "PNG");
+    const view = new DataView(b.buffer, b.byteOffset);
+    assert.equal(view.getUint32(16), size, path + " width");
+  }
+  const { id } = await newPage(t);
+  const html = await (await t.call("/" + id)).text();
+  assert.match(html, /<link rel="icon" href="\/favicon\.ico" sizes="32x32">/);
+  assert.match(html, /<link rel="icon" href="\/_\/icon\.svg" type="image\/svg\+xml">/);
+  assert.match(html, /<link rel="apple-touch-icon" href="\/apple-touch-icon\.png">/);
+  assert.match(await (await t.call("/")).text(), /rel="icon"/);
+});

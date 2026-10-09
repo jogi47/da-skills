@@ -4,6 +4,7 @@
 CREATE TABLE IF NOT EXISTS pages (
   id TEXT PRIMARY KEY,                          -- uuid v4, the last segment of the public URL
   title TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',          -- short summary for the owner's dashboard and link previews
   html TEXT NOT NULL,                           -- the page as authored (a fragment or a full document)
   mode TEXT NOT NULL DEFAULT 'open',            -- 'open' accepts answers, 'locked' is read-only
   version INTEGER NOT NULL DEFAULT 1,           -- bumped on every republish
@@ -31,3 +32,7 @@ CREATE TABLE IF NOT EXISTS hits (
   n INTEGER NOT NULL,
   exp INTEGER NOT NULL
 );
+
+-- Added after the first release. Databases created before it get the column here; on newer ones this
+-- fails with "duplicate column name", which `client-page.sh schema` (and the test fake) ignore.
+ALTER TABLE pages ADD COLUMN description TEXT NOT NULL DEFAULT '';

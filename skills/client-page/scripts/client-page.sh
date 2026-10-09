@@ -269,6 +269,22 @@ workers_dev_subdomain() { # ACCOUNT_ID → the account's <name> in <name>.worker
   jq -r '.result.subdomain // empty' <<<"$out"
 }
 
+access_guide() {
+  cat <<EOF
+      → The dashboard's login uses Cloudflare Zero Trust (free for up to 50 users):
+          1. Open https://one.dash.cloudflare.com and follow the first-run steps: pick a team name
+             (e.g. your name) and the Free plan. Cloudflare may ask for a payment method even on the
+             free plan; nothing is charged.
+          2. Edit the client-page API token (https://dash.cloudflare.com/profile/api-tokens) and add two rows:
+               Account · Access: Apps and Policies                               · Edit
+               Account · Access: Organizations, Identity Providers, and Groups   · Edit
+             (Edit lets admin-setup add the emailed one-time PIN login for you; Read works too, but then
+             you add it yourself: Integrations → Identity providers → Add new → One-time PIN.)
+             The token's value stays the same, so nothing needs saving again.
+          Then run: $0 admin-setup you@example.com
+EOF
+}
+
 # doctor [HOST | --workers-dev] [--preflight]: checks everything and prints the next step for each problem.
 # HOST is a hostname on the user's own domain; --workers-dev uses Cloudflare's free address instead.
 # With --preflight (used by setup) it prints nothing useful and returns non-zero if setup can't succeed yet.
@@ -422,6 +438,28 @@ cmd_doctor() {
   else note "admin token not created yet (setup creates it)"; fi
   if [[ -n "$h" && "$(host)" == "$h" && -n "$(conf_get d1_id)" ]]; then pass "config for $h in $CONF"; else note "not set up for this address yet"; fi
 
+  echo; echo "Images and video (optional)"
+  if [[ -n "$(conf_get files_bucket)" && "$(host)" == "$h" ]]; then
+    if [[ "$adm" == match ]] && ( admin GET "/files" ) >/dev/null 2>&1; then pass "file storage is on (R2 bucket $(conf_get files_bucket))"
+    else note "file storage is configured (R2 bucket $(conf_get files_bucket)); couldn't check it from this machine"; fi
+  else
+    note "not set up. To publish pages with images or video: $0 files-setup"
+  fi
+
+  echo; echo "Owner dashboard (optional)"
+  if [[ -n "$(conf_get access_aud)" && "$(host)" == "$h" ]]; then
+    local ip dash; ip="$(public_ip "$h")"
+    if [[ -n "$ip" ]]; then dash="$(curl -s -m 10 --resolve "$h:443:$ip" -o /dev/null -w '%{http_code} %{redirect_url}' "https://$h/admin" 2>/dev/null || true)"
+    else dash="$(curl -s -m 10 -o /dev/null -w '%{http_code} %{redirect_url}' "https://$h/admin" 2>/dev/null || true)"; fi
+    case "$dash" in
+      30[0-9]\ *cloudflareaccess.com*) pass "https://$h/admin asks for a Cloudflare login (allowed: $(conf_get admin_emails))" ;;
+      200\ *) fail "https://$h/admin answered without a login"; next "Run: $0 admin-setup $(conf_get admin_emails)" ;;
+      *) fail "https://$h/admin isn't behind the Cloudflare login (got: ${dash:-no answer})"; next "Run: $0 admin-setup $(conf_get admin_emails)" ;;
+    esac
+  else
+    note "not set up. To list every page at https://${h:-<site>}/admin behind a login: $0 admin-setup you@example.com"
+  fi
+
   echo
   local setup_arg="$h"; [[ $wd -eq 1 ]] && setup_arg="--workers-dev"
   if [[ $FAILS -gt 0 ]]; then
@@ -440,10 +478,17 @@ cmd_doctor() {
 apply_schema() {
   local account_id db_id; account_id="$(require_conf account_id)"; db_id="$(require_conf d1_id)"
   local n=0
+  local out
   while IFS= read -r stmt; do
-    cf POST "/accounts/$account_id/d1/database/$db_id/query" -H 'content-type: application/json' \
-      --data "$(jq -n --argjson s "$stmt" '{sql: $s}')" >/dev/null
-    n=$((n + 1))
+    if out="$(cf_try POST "/accounts/$account_id/d1/database/$db_id/query" -H 'content-type: application/json' \
+        --data "$(jq -n --argjson s "$stmt" '{sql: $s}')")"; then
+      n=$((n + 1))
+    elif grep -qi "duplicate column name" <<<"$out"; then
+      n=$((n + 1))   # an ADD COLUMN that this database already has
+    else
+      jq -r '(.errors // []) | map("  Cloudflare: \(.code) \(.message)") | join("\n")' <<<"$out" >&2 2>/dev/null || true
+      die "schema statement failed: $(jq -r . <<<"$stmt" | head -c 80)…"
+    fi
   done < <(sed 's/--.*$//' "$SKILL_DIR/worker/schema.sql" \
     | jq -Rsc 'split(";") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)) | .[]')
   echo "Schema applied ($n statements)"
@@ -550,24 +595,220 @@ cmd_deploy() {
   local tmp; tmp="$(mktemp -d)"
   ( umask 077
     printf '%s' "$(secret_get "$KC_ADMIN")" >"$tmp/admin"
-    jq -n --arg db "$db_id" --rawfile tok "$tmp/admin" --arg date "$COMPAT_DATE" '{
+    jq -n --arg db "$db_id" --rawfile tok "$tmp/admin" --arg date "$COMPAT_DATE" \
+      --arg team "$(conf_get access_team)" --arg aud "$(conf_get access_aud)" --arg emails "$(conf_get admin_emails)" \
+      --arg bucket "$(conf_get files_bucket)" '{
       main_module: "worker.mjs",
       compatibility_date: $date,
-      bindings: [
+      bindings: ([
         {type: "d1", name: "DB", id: $db},
         {type: "secret_text", name: "ADMIN_TOKEN", text: $tok}
-      ]
+      ] + (if $aud == "" then [] else [
+        {type: "plain_text", name: "ACCESS_TEAM", text: $team},
+        {type: "plain_text", name: "ACCESS_AUD", text: $aud},
+        {type: "plain_text", name: "ADMIN_EMAILS", text: $emails}
+      ] end)
+        + (if $bucket == "" then [] else [{type: "r2_bucket", name: "FILES", bucket_name: $bucket}] end))
     }' >"$tmp/metadata.json"
     rm -f "$tmp/admin" )
+  # Every module in worker/ is uploaded; worker.mjs is the entry point.
+  local parts=(-F "metadata=@$tmp/metadata.json;type=application/json") f
+  for f in "$SKILL_DIR"/worker/*.mjs; do
+    parts+=(-F "$(basename "$f")=@$f;filename=$(basename "$f");type=application/javascript+module")
+  done
   local status=0
-  cf PUT "/accounts/$account_id/workers/scripts/$(worker_name)" \
-    -F "metadata=@$tmp/metadata.json;type=application/json" \
-    -F "worker.mjs=@$SKILL_DIR/worker/worker.mjs;filename=worker.mjs;type=application/javascript+module" \
-    -F "runtime.mjs=@$SKILL_DIR/worker/runtime.mjs;filename=runtime.mjs;type=application/javascript+module" \
-    >/dev/null || status=$?
+  cf PUT "/accounts/$account_id/workers/scripts/$(worker_name)" "${parts[@]}" >/dev/null || status=$?
   rm -rf "$tmp"
   [[ $status -eq 0 ]] || exit $status
   echo "Deployed Worker '$(worker_name)'"
+}
+
+# admin-setup EMAIL[,EMAIL…]: puts a Cloudflare Access login in front of https://<site>/admin, lets only these
+# emails in, and redeploys the Worker so it checks the login itself too.
+cmd_admin_setup() {
+  local emails="${1:-}" e list=()
+  [[ -n "$emails" ]] || die "usage: $0 admin-setup you@example.com[,someone@example.com]"
+  emails="$(tr 'A-Z' 'a-z' <<<"$emails" | tr -d ' ')"
+  IFS=',' read -r -a list <<<"$emails"
+  for e in "${list[@]}"; do [[ "$e" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || die "not an email address: $e"; done
+  local h account_id; h="$(require_host)"; account_id="$(require_conf account_id)"
+
+  local org team
+  if ! org="$(cf_try GET "/accounts/$account_id/access/organizations")"; then
+    echo "  ✗ Cloudflare Zero Trust isn't set up for this account yet, or the token can't read it." >&2
+    access_guide >&2
+    die "admin-setup stopped before changing anything"
+  fi
+  team="$(jq -r '.result.auth_domain // empty' <<<"$org")"
+  [[ -n "$team" ]] || { access_guide >&2; die "no Zero Trust team domain found; finish step 1 above"; }
+  echo "Zero Trust team: $team"
+
+  local apps app_id body out aud include
+  apps="$(cf_try GET "/accounts/$account_id/access/apps?per_page=100")" \
+    || { access_guide >&2; die "the token can't manage Access applications; add the rows in step 2 above"; }
+  app_id="$(jq -r --arg d "$h/admin" '[.result[] | select(.domain == $d)][0].id // empty' <<<"$apps")"
+  include="$(printf '%s\n' "${list[@]}" | jq -R '{email: {email: .}}' | jq -s '.')"
+  body="$(jq -n --arg d "$h/admin" --arg n "client-page dashboard ($h)" --argjson inc "$include" '{
+    name: $n, domain: $d, type: "self_hosted", session_duration: "24h", app_launcher_visible: false,
+    policies: [{name: "Dashboard owners", decision: "allow", include: $inc}]
+  }')"
+  if [[ -n "$app_id" ]]; then
+    out="$(cf PUT "/accounts/$account_id/access/apps/$app_id" -H 'content-type: application/json' --data "$body")"
+    echo "Updated the Access login for https://$h/admin"
+  else
+    out="$(cf POST "/accounts/$account_id/access/apps" -H 'content-type: application/json' --data "$body")"
+    echo "Created the Access login for https://$h/admin"
+  fi
+  aud="$(jq -r '.result.aud // empty' <<<"$out")"
+  [[ -n "$aud" ]] || die "Cloudflare didn't return the application's audience tag"
+
+  # The login needs a sign-in method; the simplest is a one-time PIN emailed to the allowed address.
+  local idps
+  if idps="$(cf_try GET "/accounts/$account_id/access/identity_providers")" \
+     && [[ "$(jq '[.result[]? | select(.type == "onetimepin")] | length' <<<"$idps")" -eq 0 ]]; then
+    if cf_try POST "/accounts/$account_id/access/identity_providers" -H 'content-type: application/json' \
+         --data '{"name": "One-time PIN", "type": "onetimepin", "config": {}}' >/dev/null; then
+      echo "Added the one-time PIN login (Cloudflare emails a code to the allowed address)"
+    elif [[ "$(jq '.result | length' <<<"$idps")" -eq 0 ]]; then
+      echo "  • No login method is set up, and this token can't add one. In https://one.dash.cloudflare.com →"
+      echo "    Integrations → Identity providers → Add new identity provider → One-time PIN → Save."
+    fi
+  fi
+
+  conf_set access_team "$team"; conf_set access_aud "$aud"; conf_set admin_emails "$emails"
+  cmd_deploy
+  echo "Dashboard ready: https://$h/admin"
+  echo "Sign in with $(sed 's/,/ or /g' <<<"$emails"); Cloudflare emails a one-time code. Opening https://$h while signed in goes there too."
+}
+
+# ---------- files (images, video, audio, PDF) ----------
+
+FILE_EXT_RE='\.(png|jpe?g|gif|webp|avif|svg|mp4|webm|mov|mp3|m4a|wav|ogg|pdf)$'
+
+mime_of() {
+  case "$(tr 'A-Z' 'a-z' <<<"${1##*.}")" in
+    png) echo image/png ;; jpg|jpeg) echo image/jpeg ;; gif) echo image/gif ;; webp) echo image/webp ;;
+    avif) echo image/avif ;; svg) echo image/svg+xml ;; mp4) echo video/mp4 ;; webm) echo video/webm ;;
+    mov) echo video/quicktime ;; mp3) echo audio/mpeg ;; m4a) echo audio/mp4 ;; wav) echo audio/wav ;;
+    ogg) echo audio/ogg ;; pdf) echo application/pdf ;; *) return 1 ;;
+  esac
+}
+
+sha256_of() { if have shasum; then shasum -a 256 "$1" | cut -c1-64; else sha256sum "$1" | cut -c1-64; fi; }
+
+r2_guide() {
+  cat <<EOF
+      → Images and videos are kept in Cloudflare R2 (10 GB free, no charge for downloads):
+          1. Turn R2 on once: https://dash.cloudflare.com → Storage & databases → R2 → follow the steps.
+             Cloudflare may ask for a payment method; the free allowance isn't charged.
+          2. Edit the client-page API token (https://dash.cloudflare.com/profile/api-tokens) and add:
+               Account · Workers R2 Storage · Edit
+          Then run: $0 files-setup
+EOF
+}
+
+# upload_file FILE: stores FILE once (same content, same address) and prints its path, /_/f/<hash>/<name>.
+upload_file() {
+  local f="$1" type sha name key code tok
+  [[ -f "$f" ]] || die "no such file: $f"
+  type="$(mime_of "$f")" || die "not an image, video, audio file or PDF: $f"
+  [[ "$(wc -c <"$f" | tr -d ' ')" -le 104857600 ]] || die "$f is over 100 MB; host big videos elsewhere (e.g. an unlisted YouTube link)"
+  sha="$(sha256_of "$f")"
+  name="$(basename "$f" | sed -E 's/[^A-Za-z0-9._-]+/-/g; s/^-+//' | cut -c1-120)"
+  [[ -n "$name" ]] || name="file.${f##*.}"
+  key="${sha:0:12}/$name"
+  if [[ "$(curl -s -o /dev/null -w '%{http_code}' -I "$(site)/_/f/$key")" == 200 ]]; then
+    echo "  = $f (already uploaded)" >&2
+  else
+    tok="$(secret_get "$KC_ADMIN")"; [[ -n "$tok" ]] || die "no admin token saved; run: $0 doctor"
+    code="$(printf 'header = "Authorization: Bearer %s"\n' "$tok" | curl -sS -K - -X PUT -H "content-type: $type" \
+      --data-binary "@$f" -o /dev/null -w '%{http_code}' "$(site)/_admin/files/$key")" || die "upload failed: $f"
+    case "$code" in
+      2*) echo "  ↑ $f" >&2 ;;
+      501) r2_guide >&2; die "file storage isn't set up yet" ;;
+      *) die "upload of $f answered HTTP $code" ;;
+    esac
+  fi
+  printf '/_/f/%s\n' "$key"
+}
+
+cmd_upload() {
+  [[ $# -gt 0 ]] || die "usage: $0 upload FILE [FILE …]   (prints each file's public URL)"
+  local f p
+  for f in "$@"; do p="$(upload_file "$f")" || exit 1; echo "$(site)$p"; done
+}
+
+# rewrite_assets HTML BASE_DIR OUT: uploads every local image/video/PDF the page refers to by a relative
+# path (src=, data-src=, href=, poster=), six at a time, and writes a copy of the page with those links
+# pointing at the uploaded files. Prints the number of files.
+rewrite_assets() {
+  local html="$1" base="$2" out="$3" refs ref map n=0 work
+  work="$(mktemp -d)"
+  refs="$(grep -oE "(src|data-src|href|poster)=(\"[^\"]*\"|'[^']*')" "$html" | sed -E "s/^[a-z-]+=//; s/^[\"']//; s/[\"']\$//" | sort -u || true)"
+  while IFS= read -r ref; do
+    [[ -n "$ref" ]] || continue
+    case "$ref" in http:*|https:*|//*|/*|\#*|data:*|blob:*|mailto:*|tel:*|javascript:*) continue ;; esac
+    grep -qiE "$FILE_EXT_RE" <<<"$ref" || continue
+    [[ -f "$base/$ref" ]] || { echo "  ! $ref is referenced but not found next to the page; left as is" >&2; continue; }
+    printf '%s\0' "$ref" >>"$work/refs"
+    n=$((n + 1))
+  done <<<"$refs"
+  if [[ $n -gt 0 ]]; then
+    # Each worker prints "<ref>\t<path>"; any failed upload makes xargs fail, and the publish stops.
+    xargs -0 -n 1 -P 6 "$0" _upload-one "$base" <"$work/refs" >"$work/map.tsv" \
+      || { rm -rf "$work"; echo "client-page: an upload failed (see above); nothing was published" >&2; exit 1; }
+  else
+    : >"$work/map.tsv"
+  fi
+  map="$(jq -Rn '[inputs | select(length > 0) | split("\t") | {(.[0]): .[1]}] | add // {}' <"$work/map.tsv")"
+  rm -rf "$work"
+  jq -Rrs --argjson m "$map" 'reduce ($m | to_entries[]) as $e (.;
+      split("\"" + $e.key + "\"") | join("\"" + $e.value + "\"")
+    | split("\u0027" + $e.key + "\u0027") | join("\u0027" + $e.value + "\u0027"))' "$html" >"$out"
+  echo "$n"
+}
+
+# Internal, used by rewrite_assets through xargs: _upload-one BASE_DIR REF
+cmd_upload_one() {
+  local p; p="$(upload_file "$1/$2")" || exit 1
+  printf '%s\t%s\n' "$2" "$p"
+}
+
+cmd_files() {
+  admin GET "/files" | jq -r '.files[] | [.url, .type, "\(.size / 1024 | floor) KB"] | @tsv'
+}
+
+cmd_rm_file() {
+  [[ -n "${1:-}" ]] || die "usage: $0 rm-file <hash>/<name>   (as shown by: $0 files)"
+  admin DELETE "/files/${1#/_/f/}" >/dev/null && echo "Removed ${1#/_/f/}"
+}
+
+# files-setup: creates the R2 bucket and connects it to the Worker, so pages can show images and video.
+cmd_files_setup() {
+  local account_id out bucket="client-page-files"
+  account_id="$(require_conf account_id)"
+  if ! out="$(cf_try GET "/accounts/$account_id/r2/buckets")"; then
+    echo "  ✗ R2 isn't available to this token yet ($(jq -r '.errors[0].message // "no answer"' <<<"$out" 2>/dev/null))." >&2
+    r2_guide >&2
+    die "files-setup stopped before changing anything"
+  fi
+  if [[ "$(jq --arg b "$bucket" '[.result.buckets[]? | select(.name == $b)] | length' <<<"$out")" -eq 0 ]]; then
+    cf POST "/accounts/$account_id/r2/buckets" -H 'content-type: application/json' --data "{\"name\": \"$bucket\"}" >/dev/null
+    echo "Created R2 bucket '$bucket'"
+  else
+    echo "Using R2 bucket '$bucket'"
+  fi
+  conf_set files_bucket "$bucket"
+  cmd_deploy
+  # A new Worker version takes a few seconds to reach every Cloudflare location.
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    if ( admin GET "/files" ) >/dev/null 2>&1; then
+      echo "File storage ready. Publish pages that use images with: $0 publish page.html"; return 0
+    fi
+    sleep 3
+  done
+  die "the Worker doesn't see the bucket yet; wait a minute and run: $0 doctor"
 }
 
 cmd_health() {
@@ -579,30 +820,41 @@ decode_entities() { sed -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&quot;/"/g' -e "s/
 
 cmd_publish() {
   need jq
-  local file="" id="" title="" mode=""
+  local file="" id="" title="" mode="" description="" assets=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --id) id="$2"; shift 2 ;;
       --title) title="$2"; shift 2 ;;
+      --description) description="$2"; shift 2 ;;
+      --assets) assets="$2"; shift 2 ;;
+      --no-assets) assets="-"; shift ;;
       --mode) mode="$2"; shift 2 ;;
       -*) die "unknown option $1" ;;
       *) file="$1"; shift ;;
     esac
   done
-  [[ -n "$file" && -f "$file" ]] || die "usage: publish FILE.html [--id UUID] [--title TEXT] [--mode open|locked]"
+  [[ -n "$file" && -f "$file" ]] || die "usage: publish FILE.html [--id UUID] [--title TEXT] [--description TEXT] [--mode open|locked] [--assets DIR | --no-assets]"
   [[ -z "$id" ]] || uuid_ok "$id"
   [[ -z "$mode" || "$mode" == open || "$mode" == locked ]] || die "--mode is open or locked"
   if [[ -z "$title" ]]; then
     title="$(grep -o -m1 '<title>[^<]*</title>' "$file" | sed 's/<[^>]*>//g' | decode_entities || true)"
   fi
   local tmp; tmp="$(mktemp -d)"
-  jq -n --rawfile html "$file" --arg title "$title" --arg mode "$mode" \
-    '{html: $html, title: $title} + (if $mode == "" then {} else {mode: $mode} end)' >"$tmp/body.json"
+  local src="$file" n
+  if [[ "$assets" != "-" ]]; then
+    n="$(rewrite_assets "$file" "${assets:-$(dirname "$file")}" "$tmp/page.html")" || { rm -rf "$tmp"; exit 1; }
+    src="$tmp/page.html"
+    [[ "$n" -eq 0 ]] || echo "Linked $n file(s) from the page to their uploaded copies" >&2
+  fi
+  jq -n --rawfile html "$src" --arg title "$title" --arg mode "$mode" --arg description "$description" \
+    '{html: $html, title: $title}
+     + (if $mode == "" then {} else {mode: $mode} end)
+     + (if $description == "" then {} else {description: $description} end)' >"$tmp/body.json"
   local out
   if [[ -n "$id" ]]; then out="$(admin PUT "/pages/$id" "$tmp/body.json")"
   else out="$(admin POST "/pages" "$tmp/body.json")"; fi
   rm -rf "$tmp"
-  jq -r '"\(.url)\n  title:   \(.title)\n  version: \(.version)\n  mode:    \(.mode)\n  " + (if .created then "new page" else "updated in place; saved answers kept" end)' <<<"$out"
+  jq -r '"\(.url)\n  title:       \(.title)\n  description: \(.description // "")\n  version:     \(.version)\n  mode:        \(.mode)\n  " + (if .created then "new page" else "updated in place; saved answers kept" end)' <<<"$out"
 }
 
 cmd_list() {
@@ -647,8 +899,18 @@ Getting started (no Cloudflare CLI needed):
                                (setup refuses to start until doctor passes; with no argument both reuse
                                the address already set up)
 
+Images and video (optional):
+  files-setup                  turn on file storage (Cloudflare R2) so pages can show images, video, audio, PDF
+  upload FILE [FILE …]         upload files yourself and print their URLs
+  files                        list uploaded files
+  rm-file HASH/NAME            remove one uploaded file
+                               publish uploads any image/video a page links to by a relative path, by itself
+
+Owner dashboard (optional):
+  admin-setup EMAIL[,EMAIL]    list every page at https://<site>/admin, behind a Cloudflare login for these emails
+
 Pages:
-  publish FILE [--id UUID] [--title T] [--mode open|locked]
+  publish FILE [--id UUID] [--title T] [--description D] [--mode open|locked]
                                new page (prints its URL), or update one in place with --id
   list                         every page: id, mode, version, saved answers, title
   get UUID                     page details
@@ -673,6 +935,12 @@ main() {
     doctor|verify) cmd_doctor "$@" ;;
     setup) cmd_setup "$@" ;;
     deploy) cmd_deploy "$@" ;;
+    admin-setup) cmd_admin_setup "$@" ;;
+    files-setup) cmd_files_setup ;;
+    upload) cmd_upload "$@" ;;
+    _upload-one) cmd_upload_one "${1:-}" "${2:-}" ;;
+    files) cmd_files ;;
+    rm-file) cmd_rm_file "${1:-}" ;;
     schema) apply_schema ;;
     health) cmd_health ;;
     publish) cmd_publish "$@" ;;

@@ -4,9 +4,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import worker from "../worker/worker.mjs";
 import { fakeD1 } from "./fake-d1.mjs";
+import { fakeR2 } from "./fake-r2.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const env = { DB: fakeD1(join(here, "..", "worker", "schema.sql")), ADMIN_TOKEN: process.env.CLIENT_PAGE_ADMIN_TOKEN };
+const env = { DB: fakeD1(join(here, "..", "worker", "schema.sql")), FILES: fakeR2(), ADMIN_TOKEN: process.env.CLIENT_PAGE_ADMIN_TOKEN };
 const port = Number(process.argv[2] || 8799);
 http.createServer(async (req, res) => {
   const chunks = [];
