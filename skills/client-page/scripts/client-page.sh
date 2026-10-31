@@ -1033,6 +1033,57 @@ cmd_publish() {
   jq -r '"\(.url)\n  title:       \(.title)\n  description: \(.description // "")\n  version:     \(.version)\n  mode:        \(.mode)\n  " + (if .created then "new page" else "updated in place; saved answers kept" end)' <<<"$out"
 }
 
+# Publishes or updates a page with one D1 statement, so it needs no admin token and no Worker deploy.
+# Only Account · D1 · Edit. Used when the admin token is missing or lives on another machine.
+cmd_d1_publish() {
+  need jq
+  local file="" id="" title="" description="" mode="" given_id=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --id) given_id="$2"; id="$2"; shift 2 ;;
+      --title) title="$2"; shift 2 ;;
+      --description) description="$2"; shift 2 ;;
+      --mode) mode="$2"; shift 2 ;;
+      -*) die "unknown option $1" ;;
+      *) file="$1"; shift ;;
+    esac
+  done
+  [[ -n "$file" && -f "$file" ]] || die "usage: d1-publish FILE.html [--id UUID] [--title TEXT] [--description TEXT] [--mode open|locked]"
+  [[ -z "$id" ]] || uuid_ok "$id"
+  [[ -z "$mode" || "$mode" == open || "$mode" == locked ]] || die "--mode is open or locked"
+  local host account db size
+  host="$(require_conf host)"; account="$(require_conf account_id)"; db="$(require_conf d1_id)"
+  size="$(wc -c <"$file" | tr -d ' ')"
+  [[ "$size" -le 1800000 ]] || die "the page is over the 1.8 MB limit (it is $size bytes)"
+  [[ -n "$title" ]] || title="$(grep -o -m1 '<title>[^<]*</title>' "$file" | sed 's/<[^>]*>//g' || true)"
+  if [[ -z "$description" ]]; then
+    description="$(grep -o -m1 '<meta name="description" content="[^"]*"' "$file" | sed 's/.*content="//' || true)"
+  fi
+  local now sql body out
+  now="$(( $(date +%s) * 1000 ))"
+  if [[ -n "$id" ]]; then
+    sql='UPDATE pages SET title=?, description=?, html=?, mode=COALESCE(?, mode), version=version+1, rev=rev+1, updated_at=? WHERE id=?'
+    body="$(jq -n --arg sql "$sql" --rawfile html "$file" --arg t "$title" --arg d "$description" \
+      --arg m "$mode" --argjson now "$now" --arg id "$id" \
+      '{sql: $sql, params: [$t, $d, $html, (if $m == "" then null else $m end), $now, $id]}')"
+  else
+    local hex
+    hex="$(openssl rand -hex 16)"
+    id="${hex:0:8}-${hex:8:4}-4${hex:13:3}-$(printf '%x' $(( (0x${hex:16:1} & 3) | 8 )))${hex:17:3}-${hex:20:12}"
+    sql='INSERT INTO pages (id, title, description, html, mode, version, rev, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, 0, ?, ?)'
+    body="$(jq -n --arg sql "$sql" --rawfile html "$file" --arg t "$title" --arg d "$description" \
+      --arg m "${mode:-open}" --argjson now "$now" --arg id "$id" \
+      '{sql: $sql, params: [$id, $t, $d, $html, $m, $now, $now]}')"
+  fi
+  out="$(cf_try POST "/accounts/$account/d1/database/$db/query" -H 'content-type: application/json' --data "$body")" \
+    || die "the D1 insert failed; the token needs Account · D1 · Edit"
+  [[ "$(jq -r '[.result[0].meta.changes // 0] | add' <<<"$out" 2>/dev/null || echo 0)" -gt 0 ]] \
+    || die "D1 changed no rows (does page $id exist?)"
+  printf 'https://%s/%s\n  title:       %s\n  description: %s\n  mode:        %s\n  %s, written straight to D1 (no admin token used)\n' \
+    "$host" "$id" "$title" "$description" "${mode:-open}" \
+    "$([[ -n "$given_id" ]] && echo 'updated in place; saved answers kept' || echo 'new page')"
+}
+
 cmd_list() {
   admin GET "/pages" | jq -r '.pages[] | [
       .id, .mode, "v\(.version)", "\(.records) saved",
@@ -1102,6 +1153,9 @@ Owner dashboard (optional):
 Pages:
   publish FILE [--id UUID] [--title T] [--description D] [--mode open|locked]
                                new page (prints its URL), or update one in place with --id
+  d1-publish FILE [--id UUID] [--title T] [--description D] [--mode open|locked]
+                               same, but written straight to D1 with the Cloudflare token: needs no admin
+                               token, no Worker deploy and no other machine (Account · D1 · Edit)
   list                         every page: id, mode, version, saved answers, title
   get UUID                     page details
   html UUID                    print the page's current HTML
@@ -1138,6 +1192,7 @@ main() {
     schema) apply_schema ;;
     health) cmd_health ;;
     publish) cmd_publish "$@" ;;
+    d1-publish) cmd_d1_publish "$@" ;;
     list) cmd_list ;;
     get) cmd_get "${1:-}" ;;
     html) cmd_html "${1:-}" ;;

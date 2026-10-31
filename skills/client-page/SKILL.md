@@ -1,6 +1,6 @@
 ---
 name: client-page
-description: Publish a web page with saved answers at a public link (https://<site>/<uuid> on Cloudflare), so people without Claude access, such as clients, can open it and respond anonymously. Three tiers, free (pages, no card), media (adds creator-uploaded images and video) and full (adds a login-protected owner dashboard). Works on the user's own domain or Cloudflare's free workers.dev address, and onboards from zero (tools, tier choice, account, card where needed, token) with no Cloudflare CLI. Use when the user wants a shareable page for someone outside Claude, such as an approval sheet, checklist, questionnaire, report or tracker, instead of a claude.ai artifact; also to set the hosting up, or to update, lock, archive or read the answers on such a page, or to change the hosting Worker itself.
+description: Publish a web page with saved answers at a public link (https://<site>/<uuid> on Cloudflare), so people without Claude access, such as clients, can open it and respond anonymously. Asks first whether an existing site is already set up or a new one is wanted, and never touches a live site. Three tiers, free (pages, no card), media (adds creator-uploaded images and video) and full (adds a login-protected owner dashboard). Works on the user's own domain or Cloudflare's free workers.dev address, and onboards from zero (tools, tier choice, account, card where needed, token) with no Cloudflare CLI. Use when the user wants a shareable page for someone outside Claude, such as an approval sheet, checklist, questionnaire, report or tracker, instead of a claude.ai artifact; also to set the hosting up, or to update, lock, archive or read the answers on such a page, or to change the hosting Worker itself.
 ---
 
 # client-page
@@ -24,7 +24,7 @@ installed anything from Cloudflare can still use it. The only tools needed are `
 
 | Path (in this skill folder) | What it is |
 |---|---|
-| `scripts/client-page.sh` | doctor, setup, publish, list, records, lock, archive, deploy, … (`--help`) |
+| `scripts/client-page.sh` | doctor, setup, publish, d1-publish, list, records, lock, archive, deploy, … (`--help`) |
 | `worker/worker.mjs` | the Worker: serves pages, the visitor API and the admin API |
 | `worker/runtime.mjs` | the in-page runtime, served at `/_/rt.js?v=<hash>` as `window.cfdocs` |
 | `worker/schema.sql` | D1 tables: `pages`, `records`, `hits` |
@@ -36,6 +36,16 @@ installed anything from Cloudflare can still use it. The only tools needed are `
 **Secrets** never appear in a command line, a file you write, or a chat message.
 - **Where they live:** macOS Keychain (account `client-page`). On a machine without Keychain they go in
   mode-600 files in `~/.config/client-page/`.
+- **When the Keychain is out of reach:** a session with no logged-in desktop — SSH, CI, another agent's
+  shell — cannot write to it, and `security` answers `User interaction is not allowed`. The save looks
+  like it ran, then the token is simply not there. Use the file store there instead:
+  ```bash
+  export CLIENT_PAGE_SECRET_STORE=file     # same shell every time, or prefix each command
+  # secrets then live in ~/.config/client-page/<name>.secret, mode 600
+  read -rsp 'token: ' T && printf '%s' "$T" > ~/.config/client-page/client-page-admin-token.secret && unset T
+  ```
+  The script reads Keychain by default and those files only with that variable set, so set it on every
+  call: `CLIENT_PAGE_SECRET_STORE=file scripts/client-page.sh publish page.html`.
 - `client-page-cloudflare-token`: the Cloudflare API token the user creates.
 - `client-page-admin-token`: made by `setup`, and set as the Worker's `ADMIN_TOKEN`.
 
@@ -67,6 +77,21 @@ The skill comes in three tiers. Each includes everything in the one before it. R
 
 Follow these steps in order. Each one ends at a check, so nobody is asked for something the next step
 doesn't need.
+
+0. **Ask one question first: is there already a site?** Never assume a new signup, and never run `setup`
+   before this is answered. Ask, in the user's words, "do you already have a client-page site set up, or
+   should I make a new one?" Then:
+   - **A site already exists and this machine set it up** (`~/.config/client-page/config.json` has
+     `host`, and `doctor` ends "All set"): nothing to onboard. Go straight to making a page.
+   - **A site already exists but this machine didn't set it up** (config is missing, or present with no
+     token, or `doctor` says no Cloudflare API token): do **not** run `setup`, which would deploy and
+     rewire a live site. Read "Another machine, same site" and
+     [Publishing without the admin token](#publishing-without-the-admin-token-d1-publish). The config is
+     not secret, so copying `~/.config/client-page/config.json` and `access_aud` across is fine and keeps
+     every existing page, answer and link working. Only an existing site's own admin token, or a
+     Cloudflare API token, unlocks publishing — and an existing site must never be given a new address.
+   - **No site anywhere** (no config, and no Worker answers on the address they name): this is a new
+     signup. Continue with steps 1–6, choosing a tier and an address.
 
 1. **Check the machine:** run `scripts/client-page.sh doctor`.
    - **"All set"** means it's done: go straight to making the page.
@@ -127,6 +152,31 @@ doesn't need.
   replace it and lock the other machine out.
 - **Rotating:** only if the original machine is gone for good, `setup <address> --rotate-admin-token`
   makes a new token. Any other machine then needs it copied over.
+- **The admin token can never be recovered.** It is a Worker secret: Cloudflare stores it write-only, the
+  dashboard shows the name only, and the API never returns the value. If no machine has it, either rotate
+  it (which locks every other machine out) or skip it with `d1-publish` below.
+
+## Publishing without the admin token: `d1-publish`
+
+`publish` talks to the Worker's admin API, which needs the admin token. When that token is missing (a
+second machine, or the machine that ran `setup` is gone), the page can still go live: a page is one row
+in D1, and the config already holds `account_id` and `d1_id`.
+
+```bash
+scripts/client-page.sh d1-publish page.html                 # new page, prints its URL
+scripts/client-page.sh d1-publish page.html --id <uuid>     # update in place
+```
+
+- **What it needs:** the Cloudflare API token with Account · D1 · Edit. No admin token, no Worker
+  deploy, no other machine.
+- **What it does:** one `INSERT` (or `UPDATE`, which bumps `version` and `rev` the way `publish` does),
+  then a live page at `https://<site>/<uuid>`. Saved answers and links are untouched.
+- **Nothing else changes:** it does not touch the Worker, R2, Access, or another machine's token, so a
+  machine that still has the admin token keeps working.
+- **What it cannot do:** upload files. `publish` uploads referenced images through the admin API, and
+  `upload` needs the admin token too. With `d1-publish`, reference images that are already online, or
+  keep them inline as `data:` URLs (free tier, under 1.8 MB).
+- Prefer `publish` whenever the admin token is available: it also handles assets and the version bar.
 
 ## Making a page
 
