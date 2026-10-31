@@ -1,4 +1,0 @@
-interface:
-  display_name: "Git Commit No Verify"
-  short_description: "Commit staged changes without hooks"
-  default_prompt: "Use $git-commit-no-verify to commit the currently staged changes with --no-verify."

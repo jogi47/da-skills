@@ -18,7 +18,7 @@ Create three Markdown artifacts:
 ## Required Inputs
 
 - Source deliverable, requirement, PR plan, implementation brief, or task document.
-- `designSpecAdvocateThreadId`: Codex thread/session id created by the `design-spec-advocate` skill.
+- `designSpecAdvocateThreadId`: agent session or conversation identifier associated with the `design-spec-advocate` skill.
 
 If `designSpecAdvocateThreadId` is missing, stop upfront and ask the user for it. Do not draft artifacts.
 
@@ -61,7 +61,7 @@ Before marking planning complete, verify task understanding with the design-spec
 Rules:
 
 - Required thread id: `designSpecAdvocateThreadId`.
-- Use available Codex thread tools to send the verification packet and read the response.
+- Use the host's available messaging and session-reading tools to send the verification packet and read the response. Discover actual tool schemas rather than assuming a provider or tool name.
 - If thread tools are unavailable, stop and ask the user to enable the tool or manually relay the packet.
 - Plan status stays `Draft` until the advocate returns `Approved`.
 - Accepted advocate outcomes: `Approved`, `Needs Revision`, `Blocked`.

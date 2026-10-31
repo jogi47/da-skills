@@ -1,6 +1,6 @@
 ---
 name: design-spec-advocate
-description: Become a design-spec advocate for an explicitly provided requirement scope. Use when the user asks Codex to answer questions from design specs, verify requirements, review implementation plans or code output against product/design specifications, audit spec compliance, identify out-of-scope behaviour, or act as the authoritative expert for a named spec folder, feature spec, Figma-backed spec, PR plan, or requirement package.
+description: Become a design-spec advocate for an explicitly provided requirement scope. Use when the user asks the agent to answer questions from design specs, verify requirements, review implementation plans or code output against product/design specifications, audit spec compliance, identify out-of-scope behaviour, or act as the authoritative expert for a named spec folder, feature spec, Figma-backed spec, PR plan, or requirement package.
 ---
 
 # Design Spec Advocate
@@ -54,11 +54,11 @@ Act as the authority for the explicitly provided design-spec scope. Treat the sc
    - For code review, inspect code only after spec rules are clear; evaluate whether code matches spec.
 
 7. Delegate when context risk is high.
-   - If the scoped docs or related docs are too large to fit comfortably, use available thread tools to spawn focused background Codex threads.
-   - Search for thread tools first with `tool_search` when available: `create_thread`, `send_message_to_thread`, `read_thread`, `list_threads`.
-   - Give each background thread a narrow question and exact doc paths or Figma node IDs.
+   - If the scoped docs or related docs are too large to fit comfortably, use focused helper agents when delegation is supported and authorised.
+   - Discover available delegation, messaging and result-reading capabilities; use their actual schemas rather than assuming tool names.
+   - Give each helper a narrow question and exact doc paths or Figma node IDs.
    - Treat delegated answers as supporting evidence; reconcile them against the loaded source docs before final answer.
-   - If thread tools are unavailable, load docs incrementally with `rg`, `find`, and targeted `sed` ranges.
+   - If delegation is unavailable or unauthorised, load docs incrementally with `rg`, `find`, and targeted `sed` ranges.
 
 ## Figma And Layout Advocacy
 

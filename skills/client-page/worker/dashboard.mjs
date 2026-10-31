@@ -317,7 +317,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     </label>
   </div>
   ${pages.length ? `<ul class="list" id="list">\n${rows}\n</ul>` : ""}
-  <p class="empty" id="empty"${pages.length ? " hidden" : ""}>${pages.length ? "No pages match." : "No pages yet. Ask Claude to publish one with the client-page skill."}</p>
+  <p class="empty" id="empty"${pages.length ? " hidden" : ""}>${pages.length ? "No pages match." : "No pages yet. Use the client-page skill to publish your first page."}</p>
   <footer>"Hide page" makes a link show "not available" without deleting anything; "Show page again" brings the same link back, and Preview lets you look at a hidden page. "Change link" gives a page a new address and turns the old one off. "Delete" removes a page, its saved entries and any files only it uses, for good.</footer>
 </div>
 <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="m-title">

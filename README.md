@@ -1,6 +1,6 @@
 # da-skills
 
-Personal, agent-neutral skills.
+Personal, agent-neutral skills. Workflows use available capabilities rather than provider-specific tool names or installation paths. Service-specific requirements (such as Chrome, Figma or Cloudflare) remain part of each skill's purpose.
 
 Recently added reusable workflows:
 

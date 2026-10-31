@@ -6,7 +6,6 @@ compatibility: Requires qmd CLI or MCP server. Install via `npm install -g @tobi
 metadata:
   author: tobi
   version: "2.0.0"
-allowed-tools: Bash(qmd:*), mcp__qmd__*
 ---
 
 # QMD - Quick Markdown Search
@@ -15,7 +14,7 @@ Local search engine for markdown content.
 
 ## Status
 
-!`qmd status 2>/dev/null || echo "Not installed: npm install -g @tobilu/qmd"`
+Run `qmd status` through an available shell tool. If the CLI is unavailable, use configured QMD MCP tools or report the missing prerequisite.
 
 ## MCP: `query`
 

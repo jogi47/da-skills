@@ -1,5 +1,5 @@
 // Run with: node --test tests/
-// The skill's SKILL.md header must stay valid YAML, or neither the installer nor Claude Code can read it.
+// The skill's SKILL.md header must stay valid YAML, so skill installers and agents can read it.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

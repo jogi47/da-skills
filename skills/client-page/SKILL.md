@@ -1,6 +1,6 @@
 ---
 name: client-page
-description: Publish a web page with saved answers at a public link (https://<site>/<uuid> on Cloudflare), so people without Claude access, such as clients, can open it and respond anonymously. Asks first whether an existing site is already set up or a new one is wanted, and never touches a live site. Three tiers, free (pages, no card), media (adds creator-uploaded images and video) and full (adds a login-protected owner dashboard). Works on the user's own domain or Cloudflare's free workers.dev address, and onboards from zero (tools, tier choice, account, card where needed, token) with no Cloudflare CLI. Use when the user wants a shareable page for someone outside Claude, such as an approval sheet, checklist, questionnaire, report or tracker, instead of a claude.ai artifact; also to set the hosting up, or to update, lock, archive or read the answers on such a page, or to change the hosting Worker itself.
+description: Publish a shareable Cloudflare page with anonymous saved answers, so people can respond without access to the creator's agent. Supports free pages, creator-uploaded media and an optional owner dashboard. Works with custom domains or workers.dev addresses and supports setup, publishing, updates, locking, archiving and reading answers. Use for public approval sheets, checklists, questionnaires, reports and trackers. Check for an existing site before setup and preserve its address, pages and saved answers.
 ---
 
 # client-page
@@ -56,7 +56,7 @@ The skill comes in three tiers. Each includes everything in the one before it. R
 
 | Tier | Features | Card on Cloudflare? | One-time Cloudflare setup | API token rows |
 |---|---|---|---|---|
-| **free** | Pages at a link; anonymous saved answers; lock, archive, new link, delete; answers read back through Claude. Small images (≈1.5 MB per page in total) built into the page itself. | **No** | Free account | Account · Workers Scripts · Edit<br>Account · D1 · Edit |
+| **free** | Pages at a link; anonymous saved answers; lock, archive, new link, delete; answers read back through the agent. Small images (≈1.5 MB per page in total) built into the page itself. | **No** | Free account | Account · Workers Scripts · Edit<br>Account · D1 · Edit |
 | **media** | + hosted screenshots, images, short videos, audio and PDFs (up to 100 MB each, 10 GB free); `publish` uploads them | **Yes**: R2 needs a payment method on file. The free allowance isn't charged. | Add a payment method; turn on R2 | + Account · Workers R2 Storage · Edit |
 | **full** | + owner dashboard at `/admin` behind an emailed-code login: every page, search, copy link, change link, delete | **Yes**: Zero Trust asks for one too. Its Free plan covers 50 users and isn't charged. | + set up Zero Trust (a team name and the Free plan) | + Account · Access: Apps and Policies · Edit<br>+ Account · Access: Organizations, Identity Providers, and Groups · Edit |
 
@@ -97,7 +97,7 @@ doesn't need.
    - **"All set"** means it's done: go straight to making the page.
    - **A missing tool** gets an install hint for each system. Tell the user the one command for their
      system, wait for them, then run `doctor` again.
-2. **Choose a tier and an address.** Ask the user with AskUserQuestion, in two questions:
+2. **Choose a tier and an address.** Ask the user using an available question interface or ordinary conversation, in two questions:
    - **Tier:**
      - "free: pages, no card needed";
      - "media: + images and video, needs a card on Cloudflare (not charged)";
@@ -190,7 +190,7 @@ scripts/client-page.sh d1-publish page.html --id <uuid>     # update in place
    - the runtime script.
 
    A full document also works; the runtime is injected into its `<head>`.
-3. **Design** to the same standard as a claude.ai artifact:
+3. **Design** to the same standard as a polished standalone web page:
    - **Colours:** colour tokens on `:root`, with dark values in
      `@media (prefers-color-scheme: dark) { :root { … } }`. Set `body` to an explicit background from a
      token. Use no literal colours in components.
@@ -250,15 +250,15 @@ Only the page's creator adds files. Visitors can never upload anything.
 - **Privacy:** a file is public to anyone who has its URL. The hash in the URL makes it unguessable,
   and it stays up after its page is archived, until `rm-file`. Screenshots must not show real people's
   data such as names, emails or payment details. Use test data, or blur it before uploading.
-- **Copying a claude.ai artifact that has files** (like a progress page with a `shots/` folder):
-  1. List its files with the Artifact tool (`action: "list"`, `scope: "files"`).
-  2. Download them with `action: "read"` and `paths`, into the temp directory, keeping their relative
-     paths.
-  3. Read the page HTML in full. The saved file starts with the artifact's own wrapper
-     (`<!doctype html>…<body>` on line 1) and ends with `</body></html>`. Drop both, so the page is a
-     fragment again.
-  4. If the page saves data, replace `claude.use("db")` with `cfdocs.db`.
-  5. Publish. The files upload six at a time, so 60 screenshots take about 20 seconds.
+- **Copying an existing page that has files** (like a progress page with a `shots/` folder):
+  1. Use the source host's available export or file tools to list and download the HTML and assets.
+     Discover its supported operations instead of assuming tool names or request fields.
+  2. Keep asset paths relative to the HTML in a temporary directory.
+  3. Read the exported HTML in full. Remove source-host wrappers or injected scripts only after
+     identifying their purpose; preserve the page's own content, styles and behaviour.
+  4. If the page saves data, adapt its database calls to `cfdocs.db` and verify the method semantics.
+     Do not assume the source host uses the same database contract.
+  5. Publish with `scripts/client-page.sh publish`; it uploads referenced local assets.
 
 ## Owner dashboard
 
@@ -371,10 +371,10 @@ window.addEventListener("cfdocs:updated", e => …);  // a newer version was pub
   - Writes are last-writer-wins. Write on a user action, one write at a time per document. Never write
     from render code or on load.
 - **Timestamps:** stamp them yourself (`at: Date.now()`); `meta.at` is the server's update time.
-- **Porting a claude.ai artifact:**
-  - Replace `await claude.use("db")` with `cfdocs.db`; the method names match.
-  - Drop the `user` capability and any names, ids or `by` fields.
-  - Use `cfdocs.canWrite` instead of `can("data.write")`.
+- **Porting an existing page:**
+  - Adapt its database calls to `cfdocs.db`; verify supported methods and data shapes.
+  - Remove source-host identity capabilities and any names, ids or `by` fields that identify visitors.
+  - Use `cfdocs.canWrite` for write permissions and remove dependencies on the source host's permission API.
 
 ## Changing the Worker
 

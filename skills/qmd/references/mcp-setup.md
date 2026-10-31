@@ -10,34 +10,18 @@ qmd embed
 
 ## Configure MCP Client
 
-**Claude Code** (`~/.claude/settings.json`):
+Register a stdio MCP server in your client's supported configuration location. Use:
+
 ```json
 {
-  "mcpServers": {
-    "qmd": { "command": "qmd", "args": ["mcp"] }
-  }
+  "command": "qmd",
+  "args": ["mcp"]
 }
 ```
 
-**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
-```json
-{
-  "mcpServers": {
-    "qmd": { "command": "qmd", "args": ["mcp"] }
-  }
-}
-```
-
-**OpenClaw** (`~/.openclaw/openclaw.json`):
-```json
-{
-  "mcp": {
-    "servers": {
-      "qmd": { "command": "qmd", "args": ["mcp"] }
-    }
-  }
-}
-```
+The enclosing configuration keys and file path depend on the client. Read its current configuration
+or documentation before editing; preserve other configured servers. Do not assume a provider-specific
+path or schema. Verify that the client exposes the server's tools after reconnecting.
 
 ## HTTP Mode
 

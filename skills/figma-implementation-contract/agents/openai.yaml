@@ -1,6 +1,0 @@
-interface:
-  display_name: "Figma Implementation Contract"
-  short_description: "Map Figma evidence into implementation contracts"
-  default_prompt: "Use $figma-implementation-contract to create a Figma implementation contract from this plan."
-policy:
-  allow_implicit_invocation: true

@@ -16,7 +16,7 @@ Use the `qmd` CLI by default. Use QMD MCP only when the user explicitly asks for
 3. If `npm` is missing, ask the user to install Node.js/npm first, or ask approval to install it with the platform package manager when available.
 4. After install, run `qmd status` or `qmd collection list` before searching.
 
-If CLI is missing but `mcp__qmd__*` tools are already available, ask whether to use MCP as a fallback. Do not pretend search is available when neither CLI nor MCP is configured.
+If CLI is missing but QMD MCP tools are already available, ask whether to use MCP as a fallback. Do not pretend search is available when neither CLI nor MCP is configured.
 
 ## Setup A Corpus
 

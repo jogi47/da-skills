@@ -234,7 +234,7 @@ client-page tiers. Each tier includes everything in the one before it.
 
 free: pages                                                   No card needed
   You get   Pages at a link on your own domain or a free *.workers.dev address.
-            Visitors answer anonymously; answers are saved and read back through Claude.
+            Visitors answer anonymously; answers are saved and read back through your agent.
             Lock, archive, give a page a new link, delete it.
             Small images (up to about 1.5 MB per page in total) built into the page itself.
   You do    Make a free Cloudflare account, and one API token (2 permission rows, 4 with your own domain).

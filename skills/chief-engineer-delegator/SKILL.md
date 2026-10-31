@@ -54,7 +54,7 @@ An owned worker is recorded in the scratchpad as created by this chief, or expli
 Before assigning work:
 
 1. Read scratchpad worker pool.
-2. Use `list_threads`/`read_thread` only as needed to confirm status.
+2. Use available worker-status and conversation-reading tools only as needed to confirm status; discover their actual names and schemas.
 3. Prefer creating a new worker for a different task, code area, investigation, or decision context.
 4. Do not assign new work to `planning`, `working`, `needs-review`, `held`, or unresolved `blocked` workers.
 5. Reuse an `idle` owned worker only when the next task shares the same context and prior worker memory is useful.

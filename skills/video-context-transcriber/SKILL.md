@@ -18,7 +18,7 @@ For `/videos/demo.mov` that is `/videos/demo.md`, `/videos/demo_images/` and `/v
 
 Each image is the frame on screen at the segment midpoint. All frames come from one `ffmpeg` pass, and frame timestamps are read with `ffprobe` first, so screen recordings with long static stretches and audio that outlasts the video still get a frame for every segment.
 
-Prefer the wrapper script bundled beside this `SKILL.md` so output paths and the LLM context file stay consistent. Do not hardcode `.codex`, `.agents`, or repo-root paths. If the input has video but no audio stream, the wrapper skips transcription, writes no `<stem>.md`, and samples frames for visual context. If audio exists but no speech is detected, it writes the transcript and still samples frames.
+Prefer the wrapper script bundled beside this `SKILL.md` so output paths and the LLM context file stay consistent. Resolve the script from the installed skill directory; do not hardcode agent-specific directories or repo-root paths. If the input has video but no audio stream, the wrapper skips transcription, writes no `<stem>.md`, and samples frames for visual context. If audio exists but no speech is detected, it writes the transcript and still samples frames.
 
 ## Workflow
 

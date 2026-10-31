@@ -1,4 +1,0 @@
-interface:
-  display_name: "Inspect SlideTrace"
-  short_description: "Investigate SlideTrace recording folders"
-  default_prompt: "Use $inspect-slidetrace to investigate this SlideTrace folder and explain the evidence."
