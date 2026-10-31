@@ -37,13 +37,28 @@ Perform manual frontend verification in the user's Chrome browser.
   recordings, screenshots, or another browser as a substitute for manual
   Chrome interaction. Screenshots captured during the Chrome session may
   support the result.
-- Connect to Chrome, create or reuse a tab, and navigate to the required URL.
+- Inspect existing Chrome tabs first and reuse the target app's authenticated tab.
+  Create a tab only when no existing-tab constraint applies and the flow needs one.
+- When the user selects an already-open, signed-in tab, keep that tab. If it is
+  logged out or on the wrong app, report the mismatch and ask for the intended
+  state; do not log in or open another tab as a workaround.
+- Stay on the app origin unless the test requires navigation elsewhere. Do not
+  log out or change the profile as part of unrelated setup.
 - Reuse the user's Chrome profile, authenticated session, and existing tabs when
   appropriate.
 - Ask the user to reconnect or open Chrome only when Chrome control is
   unavailable or disconnected.
 - If authentication is required and unavailable, ask the user to sign in in
   Chrome and confirm when ready.
+
+## Test Scope
+
+- Drive the authorised flow end to end, including form submissions and changes
+  to synthetic test records when needed by the requested checks.
+- Do not infer permission for unrelated data changes. Do not run mutating
+  checks against production.
+- Prefer accessible page structure and text for behavioural assertions; use
+  screenshots for visual findings.
 
 ## Server Boundary
 
@@ -63,7 +78,10 @@ Perform manual frontend verification in the user's Chrome browser.
 4. Inspect visible behavior and, when relevant, console errors and network
    requests.
 5. Repeat the exact flow after a fix and test relevant boundary states.
-6. Report what was tested, the result, and anything that could not be verified.
+6. Report actions taken and pass/fail/blocked per acceptance criterion. Include
+   relevant console errors, failing network calls with HTTP status and request
+   IDs such as `x-request-id` when available, and screenshots for visual bugs.
+   State anything that could not be verified.
 
 ## Automated Tests
 

@@ -9,6 +9,10 @@ Recently added reusable workflows:
 - [dev-progress-page](skills/dev-progress-page/SKILL.md): HTML progress pages; also install `jigar-artifact-writing`.
 - [slack-digest](skills/slack-digest/SKILL.md): read channel history with an existing token; private user maps stay outside the repo.
 - [handoff-new-session](skills/handoff-new-session/SKILL.md): explicitly requested handoffs through available session tools, with a file fallback.
+- [git-commit-on-new-branch](skills/git-commit-on-new-branch/SKILL.md): branch and commit only already-staged changes.
+- [git-create-pr](skills/git-create-pr/SKILL.md): GitHub or Azure DevOps PRs from the current or a named source branch.
+- [manual-qa-checklist](skills/manual-qa-checklist/SKILL.md): short manual checks with expected visible results.
+- [embedded-browser-verification](skills/embedded-browser-verification/SKILL.md): checks in the selected browser pane and its existing session.
 
 ## Install
 
