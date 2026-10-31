@@ -1,6 +1,6 @@
 ---
 name: client-page
-description: Publish a web page with saved answers at a public link (https://<site>/<uuid> on Cloudflare), so people without Claude access, such as clients, can open it and respond anonymously. Three tiers, free (pages, no card), media (adds creator-uploaded images and video) and full (adds a login-protected owner dashboard). Works on the user's own domain or Cloudflare's free workers.dev address, and onboards from zero (tools, tier choice, account, card where needed, token) with no Cloudflare CLI. Use when the user wants a shareable page for someone outside Claude, such as an approval sheet, checklist, questionnaire, report or tracker, instead of a claude.ai artifact; also to set the hosting up, or to update, lock, archive or read the answers on such a page, or to change the hosting Worker itself.
+description: Publish a web page with saved answers at a public link (https://<site>/<uuid> on Cloudflare), so people without Claude access, such as clients, can open it and respond anonymously. Asks first whether an existing site is already set up or a new one is wanted, and never touches a live site. Three tiers, free (pages, no card), media (adds creator-uploaded images and video) and full (adds a login-protected owner dashboard). Works on the user's own domain or Cloudflare's free workers.dev address, and onboards from zero (tools, tier choice, account, card where needed, token) with no Cloudflare CLI. Use when the user wants a shareable page for someone outside Claude, such as an approval sheet, checklist, questionnaire, report or tracker, instead of a claude.ai artifact; also to set the hosting up, or to update, lock, archive or read the answers on such a page, or to change the hosting Worker itself.
 ---
 
 # client-page
@@ -77,6 +77,21 @@ The skill comes in three tiers. Each includes everything in the one before it. R
 
 Follow these steps in order. Each one ends at a check, so nobody is asked for something the next step
 doesn't need.
+
+0. **Ask one question first: is there already a site?** Never assume a new signup, and never run `setup`
+   before this is answered. Ask, in the user's words, "do you already have a client-page site set up, or
+   should I make a new one?" Then:
+   - **A site already exists and this machine set it up** (`~/.config/client-page/config.json` has
+     `host`, and `doctor` ends "All set"): nothing to onboard. Go straight to making a page.
+   - **A site already exists but this machine didn't set it up** (config is missing, or present with no
+     token, or `doctor` says no Cloudflare API token): do **not** run `setup`, which would deploy and
+     rewire a live site. Read "Another machine, same site" and
+     [Publishing without the admin token](#publishing-without-the-admin-token-d1-publish). The config is
+     not secret, so copying `~/.config/client-page/config.json` and `access_aud` across is fine and keeps
+     every existing page, answer and link working. Only an existing site's own admin token, or a
+     Cloudflare API token, unlocks publishing — and an existing site must never be given a new address.
+   - **No site anywhere** (no config, and no Worker answers on the address they name): this is a new
+     signup. Continue with steps 1–6, choosing a tier and an address.
 
 1. **Check the machine:** run `scripts/client-page.sh doctor`.
    - **"All set"** means it's done: go straight to making the page.
