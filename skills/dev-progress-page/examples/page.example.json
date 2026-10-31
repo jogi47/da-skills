@@ -1,0 +1,70 @@
+{
+  "title": "Acme 2.3 Progress",
+  "eyebrow": "Sprint 8 · 2.3 · 3 to 14 November 2026",
+  "ticket_url": "https://dev.azure.com/acme/Acme/_workitems/edit/{no}",
+  "strip_heading": "Open tickets",
+  "sections": [
+    {
+      "id": "scope",
+      "title": "Sprint 8 scope",
+      "count": "2 built and tested, both on Dev",
+      "items": [
+        {
+          "id": "1201",
+          "label": "1201 · F3 · Web portal · PBI",
+          "title": "Date format presets and search",
+          "strip_title": "F3 Date format presets and search",
+          "state": "done",
+          "chips": [
+            {"text": "Built and tested", "kind": "pass"},
+            {"text": "On Dev, ready for QA", "kind": "pass"}
+          ],
+          "changed": [
+            "The date format field now offers the six formats in use, and typing filters the list.",
+            "A format that is not in the list can still be typed, as before.",
+            "Tests: four new web portal tests. Suite: 612 tests passing."
+          ],
+          "cases": [
+            {"step": "Open a product's Date configuration and open the date format list.", "expect": "Expect the six presets, each with today's date as an example.", "status": "pass", "how": "Browser and unit test"},
+            {"step": "Type <code>MMM</code>.", "expect": "Expect only the formats with a month name.", "status": "pass", "how": "Browser"},
+            {"step": "Repeat on Dev.", "expect": "Expect the same results.", "status": "not", "how": "Not merged yet"}
+          ],
+          "shots": {"layout": "wide", "items": [
+            {"file": "1201-1-presets.png", "caption": "1201 · Web portal: the six presets", "alt": "Date format list open with six presets", "label": "The presets"}
+          ]},
+          "tickets": [{"no": "1201", "title": "F3 Date format presets"}]
+        },
+        {
+          "id": "1205",
+          "label": "1205 · F4 · Mobile app · PBI",
+          "title": "END OF CHECKS bar in the report",
+          "state": "done",
+          "chips": [
+            {"text": "Built and tested", "kind": "pass"},
+            {"text": "Camera read needs a real phone", "kind": "warn"}
+          ],
+          "changed": ["The report ends each run's checks with an END OF CHECKS bar."],
+          "cases": [
+            {"step": "Open a finished run's report.", "expect": "Expect the bar after the last check.", "status": "partly", "how": "Emulator; camera cases need a phone"}
+          ],
+          "shots": {"layout": "phone", "items": []},
+          "tickets": [{"no": "1205", "title": "F4 End of checks bar"}]
+        }
+      ]
+    },
+    {
+      "id": "waiting",
+      "title": "Waiting on an answer",
+      "count": "1 waiting: 1210",
+      "intro": ["The question was posted on the ticket on 5 November."],
+      "items": [],
+      "strip_only": [{"no": "1210", "title": "QR check type in the portal (waiting on a decision)", "state": "wait"}]
+    }
+  ],
+  "about": {
+    "paragraphs": [
+      "Every ticket of the sprint in one place, one panel per ticket, grouped into sections. Open \"How to test\" to see each case and whether it was tested locally: Passed, Partly tested, Not tested or Failed.",
+      "<b>On Dev since 6 November.</b> Merged into dev in pull requests 801 (backend) and 802 (web portal and mobile app)."
+    ]
+  }
+}

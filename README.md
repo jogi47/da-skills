@@ -1,22 +1,30 @@
 # da-skills
 
-Personal Codex skills.
+Personal, agent-neutral skills.
+
+Recently added reusable workflows:
+
+- [chrome-ui-verification](skills/chrome-ui-verification/SKILL.md): manual checks in the user's Chrome.
+- [jigar-artifact-writing](skills/jigar-artifact-writing/SKILL.md): personal writing rules and checker.
+- [dev-progress-page](skills/dev-progress-page/SKILL.md): HTML progress pages; also install `jigar-artifact-writing`.
+- [slack-digest](skills/slack-digest/SKILL.md): read channel history with an existing token; private user maps stay outside the repo.
+- [handoff-new-session](skills/handoff-new-session/SKILL.md): explicitly requested handoffs through available session tools, with a file fallback.
 
 ## Install
 
-Install all skills for Codex globally:
+Install all skills globally for your chosen agent. Set `AGENT` to its installer ID first:
 
 ```sh
-npx skills add jogi47/da-skills --skill '*' --agent codex --global --yes
+npx skills add jogi47/da-skills --skill '*' --agent "$AGENT" --global --yes
 ```
 
 Install into the current project instead:
 
 ```sh
-npx skills add jogi47/da-skills --skill '*' --agent codex --yes
+npx skills add jogi47/da-skills --skill '*' --agent "$AGENT" --yes
 ```
 
-Restart Codex after installing.
+Restart your agent after installing.
 
 ## Update
 
@@ -70,26 +78,26 @@ npx skills update --project --yes \
   client-page
 ```
 
-Restart Codex after updating.
+Restart your agent after updating.
 
 ## Install One Skill
 
 Install `video-context-transcriber` globally:
 
 ```sh
-npx skills add jogi47/da-skills --skill video-context-transcriber --agent codex --global --yes
+npx skills add jogi47/da-skills --skill video-context-transcriber --agent "$AGENT" --global --yes
 ```
 
 Install `video-context-transcriber` into the current project:
 
 ```sh
-npx skills add jogi47/da-skills --skill video-context-transcriber --agent codex --yes
+npx skills add jogi47/da-skills --skill video-context-transcriber --agent "$AGENT" --yes
 ```
 
 Example with another skill:
 
 ```sh
-npx skills add jogi47/da-skills --skill git-commit --agent codex --global --yes
+npx skills add jogi47/da-skills --skill git-commit --agent "$AGENT" --global --yes
 ```
 
 ## List Available Skills
@@ -111,5 +119,5 @@ npx skills list
 Remove one skill:
 
 ```sh
-npx skills remove git-commit --agent codex --global --yes
+npx skills remove git-commit --agent "$AGENT" --global --yes
 ```

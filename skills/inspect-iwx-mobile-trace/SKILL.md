@@ -33,6 +33,10 @@ uninstrumented. Everything here is observation, and every gap in that observatio
    - `trust.droppedRecords`, `trust.screenshotsSkipped` — buffer and capture losses.
    - `interactions.geometryAvailable` — false means taps carry coordinates but no widget.
    - `network.omission` — what the network capture cannot see.
+   - `backendJoin.state` — `exact` | `mixed` | `heuristic`: whether the captured calls carry the
+     backend's own request id, with `withRequestId` / `withoutRequestId` counting them. Read it
+     before joining anything; see **Correlating**.
+   - `performance.janky` / `jankyRatio` — a judgement about **the app**, not the capture.
 3. **`journey.json`** — the deliverable, organised **per interaction**, not per stream. Usually
    answers the question without opening anything else.
 4. Only then the raw streams.
@@ -49,7 +53,17 @@ runs/<runId>/
 ```
 
 Each `journey.json` step carries: `interactionId`, `at {x,y}`, `screen`, `widget`,
-`screenshots.before/after`, `apis[]`, `logs`, `errors[]`, `jankyFrames`, `blindSpot`.
+`screenshots.before/after`, `apis[]` (each with `backendRequestId`),
+`logs` (`{total, app, system, duplicates}`), `appLogLines`, `systemLogLines`, `errors[]`,
+`jankyFrames`, `blindSpot`.
+
+**Read `appLogLines` first.** It is the app's own output, already coalesced: the logger draws
+box-art frames around multi-line events, and one event arrives as one record rather than twenty
+borders. `systemLogLines` is Android's own chatter (`FrameTracker`, `ImeTracker`,
+`BufferQueueProducer`) and is capped at five — useful for device-level problems, rarely for app
+ones. Records marked `duplicateOf: "vm-service"` are the same app output arriving a second time
+through logcat; they are kept but excluded from both lists, and the coalesced copy is the one to
+quote.
 
 ## Correlating
 
@@ -61,8 +75,38 @@ Each `journey.json` step carries: `interactionId`, `at {x,y}`, `screen`, `widget
   `journey.startup`.
 - **`screen`** is the route where the interaction *happened*. A tap that navigates shows the
   old screen; the next interaction shows the new one. That is correct, not a bug.
-- To join a request to the backend, read `traceId`. It is currently always `null` — the join
-  to an `iwx-tracer` run is heuristic, on `(method, path, time window)`. Say so when you use it.
+- **Read `coverage.backendJoin` first — it measures which join this run supports.** `state` is
+  `exact` (every call carries the backend's request id), `mixed` (some do) or `heuristic` (none do,
+  or no calls were captured), with `withRequestId` / `withoutRequestId` counts.
+- **The id is on the journey step — no second file to open.** `journey.steps[].apis[].backendRequestId`
+  is the backend's own `TraceIdentifier` (`0HNO39LTF10MC:00000001`), which is exactly the key
+  `iwx-tracer` journeys are stored under. Look it up in the backend run's `journey.requests[]`
+  directly. It is also in `apis/*.json` as `backendRequestId`, and raw in
+  `response.headers["x-request-id"]`.
+- **On `mixed`, say which join each claim rests on.** Some calls join exactly and some fall back to
+  `(method, path, time window)` — close to unambiguous against a local backend with one developer,
+  degrading with concurrent traffic. Reporting a mixed run as if it were exact is the likeliest
+  error here.
+- **`heuristic` with calls captured means the backend build did not send the header.** `heuristic`
+  with zero calls means nothing was captured — not evidence about the backend.
+- The record's own **`traceId` is still always `null`, and is a different fact** from
+  `backendRequestId`. It would mean a `traceparent` was injected so the *backend's* trace carries
+  the mobile journey id. Nothing injects one; that direction is unbuilt (M3), and
+  `backendJoin.traceparentInjected: false` says so. The mobile-to-backend join above does not need
+  it. Never read one field as the other.
+
+## Frame health
+
+`coverage.performance` carries `frames`, `janky` and `jankyRatio`; `journey.frames` adds
+`worstScreens`, ranked. `janky` is the Flutter engine's own verdict on a frame that missed its
+budget — **a fact about the app, not about the capture**.
+
+- **`worstScreens` is where to look**, not the run total. A run is often 15-20% janky overall while
+  one screen is at 40%+, and that screen is the finding.
+- **Step totals sum to less than `frames.janky`.** A step covers only the frames that followed its
+  interaction, so frames before the first tap belong to no step. The difference is startup jank and
+  is not loss.
+- `jankyRatio` is `null`, not `0`, when no frames were captured.
 
 ## The blind-spot metric
 

@@ -32,7 +32,17 @@ Use this skill only when the user explicitly asks to commit already staged chang
 - Add a body when the diff has multiple related changes or the reason is not obvious.
 - In the body, explain what changed and why; do not restate file names mechanically.
 
-4. Commit non-interactively.
+4. Preflight the exact commit message.
+- Write the complete message to a temporary file outside the repository.
+- When the repository provides commitlint, run
+  `npx commitlint --edit <temporary-message-file>` before `git commit`.
+- If commitlint is unavailable, verify every subject, body, and footer line
+  against the limits above.
+- Revise and revalidate any rejected message before running repository hooks.
+
+5. Commit non-interactively.
+- Run `git commit -F <temporary-message-file>` so the validated message is used
+  unchanged.
 - Commit only the staged changes.
 - Return the commit SHA and final subject line.
 
