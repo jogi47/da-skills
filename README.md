@@ -13,6 +13,9 @@ Recently added reusable workflows:
 - [git-create-pr](skills/git-create-pr/SKILL.md): GitHub or Azure DevOps PRs from the current or a named source branch.
 - [manual-qa-checklist](skills/manual-qa-checklist/SKILL.md): short manual checks with expected visible results.
 - [embedded-browser-verification](skills/embedded-browser-verification/SKILL.md): checks in the selected browser pane and its existing session.
+- [ado-work-items](skills/ado-work-items/SKILL.md): Azure DevOps ticket reads, progress drafts and explicitly requested updates.
+- [app-insights-kql](skills/app-insights-kql/SKILL.md): read-only Azure telemetry diagnostics with discovered resources and schemas.
+- [onesignal-email-templates](skills/onesignal-email-templates/SKILL.md): template backups, dry-run diffs and verified live updates with project-specific configuration.
 
 ## Install
 
