@@ -24,7 +24,7 @@ installed anything from Cloudflare can still use it. The only tools needed are `
 
 | Path (in this skill folder) | What it is |
 |---|---|
-| `scripts/client-page.sh` | doctor, setup, publish, list, records, lock, archive, deploy, … (`--help`) |
+| `scripts/client-page.sh` | doctor, setup, publish, d1-publish, list, records, lock, archive, deploy, … (`--help`) |
 | `worker/worker.mjs` | the Worker: serves pages, the visitor API and the admin API |
 | `worker/runtime.mjs` | the in-page runtime, served at `/_/rt.js?v=<hash>` as `window.cfdocs` |
 | `worker/schema.sql` | D1 tables: `pages`, `records`, `hits` |
@@ -36,6 +36,16 @@ installed anything from Cloudflare can still use it. The only tools needed are `
 **Secrets** never appear in a command line, a file you write, or a chat message.
 - **Where they live:** macOS Keychain (account `client-page`). On a machine without Keychain they go in
   mode-600 files in `~/.config/client-page/`.
+- **When the Keychain is out of reach:** a session with no logged-in desktop — SSH, CI, another agent's
+  shell — cannot write to it, and `security` answers `User interaction is not allowed`. The save looks
+  like it ran, then the token is simply not there. Use the file store there instead:
+  ```bash
+  export CLIENT_PAGE_SECRET_STORE=file     # same shell every time, or prefix each command
+  # secrets then live in ~/.config/client-page/<name>.secret, mode 600
+  read -rsp 'token: ' T && printf '%s' "$T" > ~/.config/client-page/client-page-admin-token.secret && unset T
+  ```
+  The script reads Keychain by default and those files only with that variable set, so set it on every
+  call: `CLIENT_PAGE_SECRET_STORE=file scripts/client-page.sh publish page.html`.
 - `client-page-cloudflare-token`: the Cloudflare API token the user creates.
 - `client-page-admin-token`: made by `setup`, and set as the Worker's `ADMIN_TOKEN`.
 
@@ -127,6 +137,31 @@ doesn't need.
   replace it and lock the other machine out.
 - **Rotating:** only if the original machine is gone for good, `setup <address> --rotate-admin-token`
   makes a new token. Any other machine then needs it copied over.
+- **The admin token can never be recovered.** It is a Worker secret: Cloudflare stores it write-only, the
+  dashboard shows the name only, and the API never returns the value. If no machine has it, either rotate
+  it (which locks every other machine out) or skip it with `d1-publish` below.
+
+## Publishing without the admin token: `d1-publish`
+
+`publish` talks to the Worker's admin API, which needs the admin token. When that token is missing (a
+second machine, or the machine that ran `setup` is gone), the page can still go live: a page is one row
+in D1, and the config already holds `account_id` and `d1_id`.
+
+```bash
+scripts/client-page.sh d1-publish page.html                 # new page, prints its URL
+scripts/client-page.sh d1-publish page.html --id <uuid>     # update in place
+```
+
+- **What it needs:** the Cloudflare API token with Account · D1 · Edit. No admin token, no Worker
+  deploy, no other machine.
+- **What it does:** one `INSERT` (or `UPDATE`, which bumps `version` and `rev` the way `publish` does),
+  then a live page at `https://<site>/<uuid>`. Saved answers and links are untouched.
+- **Nothing else changes:** it does not touch the Worker, R2, Access, or another machine's token, so a
+  machine that still has the admin token keeps working.
+- **What it cannot do:** upload files. `publish` uploads referenced images through the admin API, and
+  `upload` needs the admin token too. With `d1-publish`, reference images that are already online, or
+  keep them inline as `data:` URLs (free tier, under 1.8 MB).
+- Prefer `publish` whenever the admin token is available: it also handles assets and the version bar.
 
 ## Making a page
 
