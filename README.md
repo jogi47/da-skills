@@ -16,6 +16,7 @@ Recently added reusable workflows:
 - [ado-work-items](skills/ado-work-items/SKILL.md): Azure DevOps ticket reads, progress drafts and explicitly requested updates.
 - [app-insights-kql](skills/app-insights-kql/SKILL.md): read-only Azure telemetry diagnostics with discovered resources and schemas.
 - [onesignal-email-templates](skills/onesignal-email-templates/SKILL.md): template backups, dry-run diffs and verified live updates with project-specific configuration.
+- [orchestrate](skills/orchestrate/SKILL.md): Claude Code only. An Opus main agent splits work, briefs Sonnet subagents and checks every result; manual use through `/orchestrate`. Copy its `agents/*.md` into `~/.claude/agents/` (the skill offers to).
 
 ## Install
 
