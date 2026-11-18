@@ -1,6 +1,7 @@
 ---
 name: handoff-new-session
 description: Write a handoff document and start a fresh top-level session in the same project using available session-management tools. Use only when the user explicitly asks to hand work to a new session or thread.
+disable-model-invocation: true
 ---
 
 # Handoff to a new session
