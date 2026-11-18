@@ -21,7 +21,8 @@ an isolated workspace. Do not commit changes or create shell worktrees to work a
 ## Write the handoff
 
 Save `handoff.md` in a new temporary directory using the platform's temporary-directory facility.
-Keep it under about 1,500 words. Include:
+Point at plan docs, PRs and files instead of copying their content; a handoff that grows long is
+copying. Include:
 
 1. Goal, adjusted to any focus the user supplied.
 2. Completed, partial and remaining work. For every touched repository, read its current branch,

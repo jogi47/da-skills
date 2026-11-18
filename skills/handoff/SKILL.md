@@ -50,8 +50,8 @@ Include, in this order:
 8. **Skills**: the skills the next session should load, and why.
 9. **Source session**: see **Source session section** below.
 
-Never put secrets, `.env` values, passwords or personal data in the handoff. Keep it under about 1,500
-words; a longer one means it is copying content that should be referenced instead.
+Never put secrets, `.env` values, passwords or personal data in the handoff. Point at plan docs, PRs
+and files instead of copying their content; a handoff that grows long is copying.
 
 ### Running processes
 
