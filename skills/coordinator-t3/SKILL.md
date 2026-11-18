@@ -12,8 +12,9 @@ You plan, delegate, verify and report. Delegated children do the work. A child's
 nothing is done until you have checked it.
 
 This skill replaces the host-specific parts of `/coordinator` (in `../coordinator/SKILL.md`). Everything
-else in that skill applies unchanged: role, scope, one fresh child per task, independent reviews, briefs,
-verifying before "done", reporting and permissions. Read it once at the start. Where the two disagree on
+else in that skill applies unchanged: role, scope (only the children you started), keeping state on disk
+(the state ledger, decisions in the plan doc, holds as memories), one fresh child per task, independent
+reviews, briefs, verifying before "done", reporting and permissions. Read it once at the start. Where the two disagree on
 tools or worktrees, this file wins. The workspace's own `CLAUDE.md` and `CLAUDE.local.md` win over both.
 
 Running this skill authorises you to delegate, brief, read and cancel children in this workspace. It grants
@@ -38,9 +39,12 @@ and never invent a result that has not arrived. Name a thread in your reply by i
 
 ## 2. Opening move
 
-1. Read the workspace's `CLAUDE.md` and `CLAUDE.local.md` so every brief carries their rules.
-2. Find the workspace's project with `t3_project_list`, then `t3_thread_list` with its `projectId`. Read the latest messages of any active or recent thread
-   with a small `limit`. Read only; do not message or cancel anything yet.
+1. Read the workspace's `CLAUDE.md` and `CLAUDE.local.md` so every brief carries their rules, and the state
+   ledger (`/coordinator` section 4) if one exists.
+2. Find the workspace's project with `t3_project_list`, then `t3_thread_list` with its `projectId`. Read the
+   latest messages only of threads that are running, waiting on the user, or active in the last few days,
+   with a small `limit` (such as 3); list older idle threads by title only. Read only; do not message or
+   cancel anything yet.
 3. Summarise in a few lines: running, idle, waiting on the user, and what each is about. Link each thread.
 
 Then take the user's argument, if any, as the first request.
@@ -91,20 +95,27 @@ touch the same files at once.
 ## 5. Briefs
 
 Use `../coordinator/session-brief-template.md`. A child sees nothing of this conversation, so each brief
-stands alone, restates the hard limits (no commit or push, no shared or production database writes, no
-migration or data scripts on staging or production, no pipeline or deploy triggers, leave changes in the
-working tree) and asks for the branch, head SHA, files changed, commands run with results, what was not
-done, and open questions.
+stands alone, names the worktree path, branch and base (section 4), restates the hard limits (no commit or
+push, no shared or production database writes, no migration or data scripts on staging or production, no
+pipeline or deploy triggers, leave changes in the working tree, plus any hold the user has set on that
+area) and asks for the branch, head SHA, files changed, commands run with results, what was not done, and
+open questions. Long output (findings, investigation results) goes to a file the brief names; the child's
+report gives the path.
 
 Delegated children never watch pull requests, and a child that works on a PR ends with one line:
 `PR <full URL>, head <SHA>, checks and reviews <state>`.
 
 ## 6. Verify and report
 
-Verify as in `/coordinator` section 8: the diff, the branch and head SHA against the report, the quoted test
-output (rerun the narrow check if cheap), and the PR state and checks. Report grouped as done, in progress,
-blocked and waiting on you, one decision at a time with a recommendation.
+Verify as in `/coordinator` section 10: the diff, the branch and head SHA against the report, the quoted
+test output (rerun the narrow check if cheap), and the PR state and checks. Report as in `/coordinator`
+section 9: grouped as done, in progress, blocked and waiting on you, with a recommendation on each decision
+(a numbered set is fine when the decisions belong to one plan). When the user says "merged", confirm the
+PR's state before starting the dependent step. Offer progress-page updates and republish only on a yes.
+When work has landed, offer to cancel or archive the children you started, never the user's own threads.
 
 Commit, push, merge, branch deletion, worktree removal, archiving and posting to tickets or Slack happen
-only when the user asks, each time. Confirm every destructive or production action first, even when a
-child asks for it.
+only when the user asks, each time. Children never commit or push: after the user approves in chat, check
+the diff and do it yourself in the child's worktree. If a child is waiting on an approval, tell the user
+which child and what it asks, with its link, rather than passing an approval on. Confirm every destructive
+or production action first, even when a child asks for it.
