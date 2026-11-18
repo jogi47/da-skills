@@ -60,6 +60,9 @@ Then take the user's argument, if any, as the first request.
 - Every new task, every fix round and every review goes to a fresh session:
   `mcp__ccd_session__start_session` with `context: "fresh"` and a complete brief (section 6). Use
   `initiation: "user_asked"` when the user has asked for the work; otherwise propose it.
+- Delegate only through visible sessions the user can open and talk to. Never use hidden Agent-tool
+  subagents, even for a read-only lookup whose answer you need before replying: start a session, tell
+  the user in one line what it is doing, end your turn, and answer when its note arrives.
 - Do not send new work to a session whose context is already full of an earlier task.
 - A fix for review findings goes to a new session, not to the session that found the findings.
 - A follow-up that genuinely needs an existing session's context (a question about its own change, a
