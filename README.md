@@ -18,6 +18,7 @@ Recently added reusable workflows:
 - [onesignal-email-templates](skills/onesignal-email-templates/SKILL.md): template backups, dry-run diffs and verified live updates with project-specific configuration.
 - [orchestrate](skills/orchestrate/SKILL.md): Claude Code only. An Opus main agent splits work, briefs Sonnet subagents and checks every result; manual use through `/orchestrate`. Copy its `agents/*.md` into `~/.claude/agents/` (the skill offers to).
 - [coordinator](skills/coordinator/SKILL.md): Claude desktop app (Code tab) only. A long-lived session that never does the work itself: it starts a fresh session per task, fix round and review, checks the results and reports back. Scoped to its own workspace. Manual use through `/coordinator`; distinct from `/orchestrate`.
+- [coordinator-t3](skills/coordinator-t3/SKILL.md): T3 Code only. Same role as `coordinator`, but it delegates through T3's `delegate_task` family instead of the Claude desktop session tools, and creates worktrees by hand. Reuses the `coordinator` skill's rules and brief template, so install both. Manual use through `/coordinator-t3`.
 - [handoff](skills/handoff/SKILL.md): write a self-contained handoff to a file and stop; starts no session. Manual use through `/handoff`.
 - [tdd](skills/tdd/SKILL.md): red-green-refactor test-driven development. From [mattpocock/skills](https://github.com/mattpocock/skills), MIT licence kept in the skill folder.
 
