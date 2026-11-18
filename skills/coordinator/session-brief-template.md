@@ -14,11 +14,13 @@ Links or paths to the plan, ticket and PR (read them; they are not copied here).
 
 ## Repo, rules and workspace
 Repo: <absolute path>. Read its CLAUDE.md and CLAUDE.local.md (if present) before anything else.
-Where you work: <main checkout | your own worktree on branch <name>>.
+Where you work: <main checkout of <repo> | your own worktree of <repo> on branch <name>>.
+Branch: <name>, cut from <base> <plus the project's convention, for example --no-track>.
 Other sessions working at the same time: <none | which files they own, so you stay clear of them>.
 
 ## Hard limits
-- No commit or push. <Or: the user asked for a commit on branch <name>; still no push.>
+- No commit or push. The coordinator commits and pushes after the user approves.
+- <Any hold the user has set on this area, for example "do not run script X on any shared DB".>
 - No writes to shared or production databases.
 - Never run data or migration scripts against staging or production.
 - No pipeline or deploy triggers.
@@ -39,6 +41,8 @@ Skills to load: <name, or none>
 - <command to run and the expected result>
 
 ## Report back (keep it short)
+Write anything long (findings, investigation results, data summaries) to <file or plan section>
+and give its path; keep the note itself to the points below.
 - Branch and head commit SHA you worked on or reviewed.
 - Files changed, one line each.
 - Commands run and their results. Quote errors exactly.
