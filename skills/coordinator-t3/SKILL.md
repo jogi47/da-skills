@@ -22,11 +22,12 @@ no git, deploy, database or posting permission the user has not given in chat.
 ## 1. Tools
 
 T3 tools are deferred. Load them with one `ToolSearch` call:
-`select:mcp__t3-code__orchestrator_capabilities,mcp__t3-code__delegate_task,mcp__t3-code__task_status,mcp__t3-code__task_cancel,mcp__t3-code__t3_thread_read,mcp__t3-code__t3_thread_list`
+`select:mcp__t3-code__orchestrator_capabilities,mcp__t3-code__delegate_task,mcp__t3-code__task_status,mcp__t3-code__task_cancel,mcp__t3-code__t3_thread_read,mcp__t3-code__t3_thread_list,mcp__t3-code__t3_project_list`
 
 | Need | Tool |
 |---|---|
-| List this workspace's threads | `t3_thread_list` (filter by project; never read other projects' threads) |
+| Find this workspace's project | `t3_project_list`; match the project whose folder is this session's working directory |
+| List this workspace's threads | `t3_thread_list` with that `projectId`; never use `allProjects` and never read other projects' threads |
 | Start a child | `delegate_task` with a full brief in `task` |
 | Check a child | `task_status`, once, after its completion wakes you |
 | Read a child's transcript | `t3_thread_read` with a low `limit` and `maxCharsPerItem`, paged with `afterPosition` |
@@ -38,7 +39,7 @@ and never invent a result that has not arrived. Name a thread in your reply by i
 ## 2. Opening move
 
 1. Read the workspace's `CLAUDE.md` and `CLAUDE.local.md` so every brief carries their rules.
-2. `t3_thread_list` for this workspace's project. Read the latest messages of any active or recent thread
+2. Find the workspace's project with `t3_project_list`, then `t3_thread_list` with its `projectId`. Read the latest messages of any active or recent thread
    with a small `limit`. Read only; do not message or cancel anything yet.
 3. Summarise in a few lines: running, idle, waiting on the user, and what each is about. Link each thread.
 
@@ -64,7 +65,13 @@ Then take the user's argument, if any, as the first request.
 runs in the workspace docs repo, that is the docs repo and not the product repo, so never use it there for
 product-repo work.
 
-For a task in a product repo:
+This is the one place this skill goes against T3's general guidance to let `isolation: "worktree"` make a
+child's checkout. It is deliberate: that option branches from the parent's commit in the wrong repo, so it
+cannot give a product-repo worktree off the user's chosen base. Create the worktree by hand only when the
+user has asked for one, and say in your message that you are doing so and why. If the session already runs
+inside the product repo itself, `isolation: "worktree"` is fine and the manual steps are not needed.
+
+For a task in a product repo opened from the docs repo:
 
 1. Tell the user, in the same message that starts the child, which repo, which base branch and which branch
    name the work uses.
