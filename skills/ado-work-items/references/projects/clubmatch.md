@@ -100,6 +100,7 @@ These are what existing V2.3 items carry; confirm against the ticket before writ
 - Bug: New, Committed, In Review, Blocked, Done. There is no In Progress; use Committed.
 - Story Bug: New, In Review, Done.
 - Infrastructure Change: Committed, In Review, Done.
+- Product Backlog Item: New, Committed, In Review, Done.
 - Task: To Do, In Progress, In Review, Done. There is no "Ready for QA".
 
 ## Rules
@@ -120,23 +121,25 @@ Never act on a ticket outside the named set.
 1. **Read first.** For each ticket read its type, state, parent and child tasks (title, state,
    assignee). A Fix task or a QA task may already exist; never create a second one.
 2. **Check the type before anything else.**
-   - A **Story Bug gets no Fix or QA task.** Set the Story Bug itself to In Review and stop. Child
-     tasks under it would make a PBI, Story Bug, Task chain, which the sprint taskboard refuses to show.
-     The same goes for any item whose parent is a PBI or Story Bug.
-   - A **Bug with no parent, or under a Feature,** takes the Fix and QA tasks below.
-   - Any other type (for example Infrastructure Change) is not covered. Set only the parent to In
-     Review and say that tasks were not created because the type has no rule.
+   - A **Story Bug gets no Fix or QA task.** Set the Story Bug itself to In Review and stop. It sits
+     one level below a PBI, and child tasks under it would make a PBI, Story Bug, Task chain, which the
+     sprint taskboard refuses to show. The same goes for any item whose parent is a PBI or Story Bug.
+   - **Every other type takes the work and QA tasks below:** Bug, Infrastructure Change, Product
+     Backlog Item, and any other type. The work task is titled **Fix** for a Bug or an Infrastructure
+     Change, and **Implement** for a PBI. (Decided by Jigar on 19 Nov 2026, replacing an earlier rule
+     that gave Infrastructure Changes and PBIs a state change only.)
 3. **Parent to In Review.** Done comes only after the merge to dev and QA. A merged ticket stays In
    Review. A step still open outside the code (data to fix on Dev, say) does not stop In Review; it
    goes on the progress page.
-4. **Fix task.** If a Fix or Implement task already exists (assigned to Jigar), set it to the parent's
-   state, In Review and not Done. If none exists, create a child Task titled **Fix**, assigned to
-   Jigar, in the current sprint, and set it to In Review.
-5. **QA task.** Create a child Task titled **QA**, assigned to Ryan, in the current sprint, left in
+4. **Work task.** If a Fix or Implement task already exists (assigned to Jigar), set it to the
+   parent's state, In Review and not Done. If none exists, create a child Task titled **Fix** (or
+   **Implement** for a PBI), assigned to Jigar, in the parent's sprint, and set it to In Review.
+5. **QA task.** Create a child Task titled **QA**, assigned to Ryan, in the parent's sprint, left in
    To Do. Take Ryan's identity from an existing QA task in the sprint; if there is none, ask. Skip it
    when a QA task is already there. **Never edit, reassign or move Ryan's existing QA tasks.**
 6. Tasks carry no description, estimate or tags.
 7. **Read every touched item back** and report ticket by ticket what changed.
 
-Commands are in `../cli-recipes.md`. A new task starts in To Do; for a Fix task run the state update
-after linking it. Link the parent only for items that may have tasks (never for a Story Bug).
+Commands are in `../cli-recipes.md`. A new task starts in To Do; for a Fix or Implement task run the
+state update after linking it. Link the parent only for items that may have tasks (never for a Story
+Bug).
