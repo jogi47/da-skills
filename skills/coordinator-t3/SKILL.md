@@ -1,6 +1,6 @@
 ---
 name: coordinator-t3
-description: T3 Code version of /coordinator. Turn this session into the long-lived coordinator for its workspace, using T3's delegate_task, task_status, task_cancel and t3_thread_read in place of the Claude desktop session tools. The coordinator never does the task work itself; it delegates each task, fix round and review to a fresh child, checks the result and reports back. Use only inside T3 Code, through /coordinator-t3. In the Claude desktop app use /coordinator.
+description: T3 Code version of /coordinator. Turn this session into the long-lived coordinator for its workspace, using T3's delegate_task, task_status, task_cancel and t3_thread_read in place of the Claude desktop session tools. The coordinator never does the task work itself; it sends each task to a child (an idle one that already has the context, or a fresh one; every review to a fresh one), checks the result and reports back. Use only inside T3 Code, through /coordinator-t3. In the Claude desktop app use /coordinator.
 argument-hint: "What should the coordinator start with? (blank = status of current threads)"
 disable-model-invocation: true
 ---
@@ -12,10 +12,12 @@ You plan, delegate, verify and report. Delegated children do the work. A child's
 nothing is done until you have checked it.
 
 This skill replaces the host-specific parts of `/coordinator` (in `../coordinator/SKILL.md`). Everything
-else in that skill applies unchanged: role, scope (only the children you started), keeping state on disk
-(the state ledger, decisions in the plan doc, holds as memories), one fresh child per task, independent
-reviews, briefs, verifying before "done", reporting and permissions. Read it once at the start. Where the two disagree on
-tools, models or worktrees, this file wins. The workspace's own `CLAUDE.md` and `CLAUDE.local.md` win over both.
+else in that skill applies unchanged: role, scope (only the children you started; children of an earlier
+coordinator count as the user's own threads), keeping state on disk (decisions in the plan doc, holds as
+memories), reuse first for follow-ups, a fresh child for every review round, briefs, pages, tickets and
+messages for others, verifying before "done", reporting and permissions. Wherever it says "session",
+read "child thread". Read it once at the start. Where the two disagree on tools, models, the ledger or
+worktrees, this file wins. The workspace's own `CLAUDE.md` and `CLAUDE.local.md` (if present) win over both.
 
 Running this skill authorises you to delegate, brief, read and cancel children in this workspace. It grants
 no git, deploy, database or posting permission the user has not given in chat.
@@ -23,13 +25,15 @@ no git, deploy, database or posting permission the user has not given in chat.
 ## 1. Tools
 
 T3 tools are deferred. Load them with one `ToolSearch` call:
-`select:mcp__t3-code__orchestrator_capabilities,mcp__t3-code__delegate_task,mcp__t3-code__task_status,mcp__t3-code__task_cancel,mcp__t3-code__t3_thread_read,mcp__t3-code__t3_thread_list,mcp__t3-code__t3_project_list`
+`select:mcp__t3-code__orchestrator_capabilities,mcp__t3-code__delegate_task,mcp__t3-code__task_status,mcp__t3-code__task_cancel,mcp__t3-code__t3_thread_read,mcp__t3-code__t3_thread_send,mcp__t3-code__t3_thread_list,mcp__t3-code__t3_project_list`
 
 | Need | Tool |
 |---|---|
 | Find this workspace's project | `t3_project_list`; match the project whose folder is this session's working directory |
 | List this workspace's threads | `t3_thread_list` with that `projectId`; never use `allProjects` and never read other projects' threads |
+| This coordinator's own thread id | `currentThreadId` in the `t3_thread_list` result |
 | Start a child | `delegate_task` with a full brief in `task` |
+| Follow-up to an idle child that has the context | `t3_thread_send` to that child's thread, with only the delta (`/coordinator` sections 5 and 7); it starts a turn there. Never to a reviewer, never to the user's own threads |
 | Check a child | `task_status`, once, after its completion wakes you |
 | Read a child's transcript | `t3_thread_read` with a low `limit` and `maxCharsPerItem`, paged with `afterPosition` |
 | Stop a child | `task_cancel`, never `t3_thread_interrupt` on a child |
@@ -39,8 +43,9 @@ and never invent a result that has not arrived. Name a thread in your reply by i
 
 ## 2. Opening move
 
-1. Read the workspace's `CLAUDE.md` and `CLAUDE.local.md` so every brief carries their rules, and the state
-   ledger (`/coordinator` section 4) if one exists.
+1. Read the workspace's `CLAUDE.md` and `CLAUDE.local.md` (if present) so every brief carries their
+   rules. Run the ledger cleanup and create your own empty ledger (section 2a). After a compaction,
+   read your own ledger instead; never another coordinator's.
 2. Find the workspace's project with `t3_project_list`, then `t3_thread_list` with its `projectId`. Read the
    latest messages only of threads that are running, waiting on the user, or active in the last few days,
    with a small `limit` (such as 3); list older idle threads by title only. Read only; do not message or
@@ -48,6 +53,23 @@ and never invent a result that has not arrived. Name a thread in your reply by i
 3. Summarise in a few lines: running, idle, waiting on the user, and what each is about. Link each thread.
 
 Then take the user's argument, if any, as the first request.
+
+Skip steps 2 and 3 when the argument does not need the state of the threads (a question about this
+skill, a request to edit it); step 1 still runs. Run them the first time a later request needs them.
+
+## 2a. State ledger (T3)
+
+`/coordinator` section 4 applies (start fresh, never read another coordinator's ledger, agents only,
+gitignored, closing), with these T3 differences:
+
+- Your ledger is `temp/coordinator/t3-<currentThreadId>.md` at the workspace root. `currentThreadId`
+  comes from `t3_thread_list`; note it in the ledger's first line so a compaction summary carries it.
+- Cleanup touches only other `t3-*.md` files directly in `temp/coordinator/`, never `desktop-*` files
+  (those belong to `/coordinator` in the Claude desktop app). Move one, unread, into
+  `temp/coordinator/archive/` when its thread id is missing from this project's `t3_thread_list` or
+  is archived there, or the file has not changed for 3 days; otherwise leave it, as that coordinator
+  may still be running. Archived files older than 14 days are deleted (the user approved this on
+  19 Nov 2026 for these ledger files only). Report counts in one line, never ledger contents.
 
 ## 3. Models and providers
 
@@ -100,6 +122,11 @@ For a task in a product repo opened from the docs repo:
 Read-only children (reviews, investigations) may share the main checkout. Never let two writing children
 touch the same files at once.
 
+The rest of `/coordinator` section 8 still applies here: the batch preview line per task, explicit-path
+commits when two writers share a checkout and branch, one owner at a time for the local API, Redis and
+simulators, and recutting a stacked branch once the branch under it merges. Only its `cwd` and
+`use_worktree` rules are replaced by this section.
+
 ## 5. Briefs
 
 Use `session-brief-template.md` in this folder, not the one in `../coordinator/`: this one is written for
@@ -135,9 +162,12 @@ Delegated children never watch pull requests, and a child that works on a PR end
 
 ## 6. Verify and report
 
-Verify as in `/coordinator` section 10 and report as in section 9. When work has landed, offer to cancel
-or archive the children you started, never the user's own threads.
+Verify as in `/coordinator` section 11, report as in section 9, and handle pages, tickets and messages
+for others as in section 10. When a child's completion wakes you, read its latest messages with
+`t3_thread_read` before acting; a finished turn can mean it is waiting on a background job. When work
+has landed, offer to cancel or archive the children you started, never the user's own threads.
 
-Permissions follow the workspace's rules and `/coordinator` section 11: a step that needs asking is done
+Permissions follow the workspace's rules and `/coordinator` section 12: a step that needs asking is done
 by you after the user approves it, never by passing the approval to a child, and a child waiting on an
-approval is shown to the user with its link.
+approval is shown to the user with its link. Blocked checks and gated shared-database writes are
+handled as section 12 says.

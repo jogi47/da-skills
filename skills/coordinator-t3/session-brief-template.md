@@ -54,7 +54,10 @@ and give its path; keep the note itself to the points below.
 - Branch, head commit SHA, and whether it is pushed (remote branch name).
 - Files changed, one line each.
 - Commands run and their results. Quote errors exactly.
-- What you did not do or could not check, and why.
+- What you did not do or could not check, and why (a blocked command or missing access: say exactly
+  which, so the coordinator can get it unblocked).
+- What you left running (local API, simulator, dev server, background job), or "nothing".
+- If you stop while a background job is still running, say "waiting on <job>", not "done".
 - Questions or decisions left for the coordinator.
 <For a review: branch and SHA reviewed, then findings with file, line, severity and a concrete
 failure case.>

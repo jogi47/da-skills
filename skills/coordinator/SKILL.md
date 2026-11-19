@@ -53,7 +53,7 @@ Run steps 2 and 3 the first time a later request needs them.
 
 You will be compacted; keep what matters where it survives.
 
-- **State ledger:** one short file per coordinator, `temp/coordinator/<id>.md` at the workspace root
+- **State ledger:** one short file per coordinator, `temp/coordinator/desktop-<id>.md` at the workspace root
   (not the scratchpad), where `<id>` is this session's own id: `$CLAUDE_CODE_HOST_SESSION_ID` (the
   `local_…` id the session tools use), or `$CLAUDE_CODE_SESSION_ID` if that is empty. The id comes
   from the environment, so it survives compaction. Update it on every change: sessions you started (id,
@@ -70,10 +70,12 @@ You will be compacted; keep what matters where it survives.
   (not archived) sessions from `list_sessions` (a cheap call; it runs even when steps 2 and 3 of the
   opening move are skipped). Then run the steps as one shell script, given those ids, that prints
   only counts and file names, never ledger contents:
-  1. Every other file directly in `temp/coordinator/` belongs to an earlier coordinator. Move it, unread,
-     into `temp/coordinator/archive/` when its session is archived or missing from the session list,
-     or the file has not changed for 3 days. Leave it in place otherwise: that coordinator may still be
-     running.
+  1. Every other `desktop-*.md` file directly in `temp/coordinator/` belongs to an earlier coordinator.
+     Move each one, unread, into `temp/coordinator/archive/` when its session is archived or missing
+     from the session list, or the file has not changed for 3 days. Leave it in place otherwise: that
+     coordinator may still be running. Leave files with any other prefix alone: they belong to
+     coordinators on another host (for example `t3-*` from `/coordinator-t3`), whose ids are not in
+     this session list.
   2. Delete files in `temp/coordinator/archive/` older than 14 days. The user approved this deletion
      on 19 Nov 2026 for these ledger files only; it covers nothing else in `temp/`.
   3. Report in one line: how many ledgers were archived, how many deleted, how many left as live.
