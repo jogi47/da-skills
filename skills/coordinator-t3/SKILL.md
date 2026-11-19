@@ -87,19 +87,48 @@ For a task in a product repo opened from the docs repo:
    `git -C <repo> worktree add --no-track -b <topic-branch> <worktree-path> origin/<base>`
    Branch names are topic names only, with no client names. The base branch is what the user said, or
    `dev` unless they say otherwise.
+   Put the worktree under the workspace's own ignored scratch folder, for example
+   `<workspace>/tmp/worktrees/<repo>-<topic>`. A child starts in the workspace root, and a path inside it
+   stays within the child's writable area; a path elsewhere may not be writable for it. Check that the
+   folder is ignored by the workspace repo (`git check-ignore`) before using it.
 3. Start the child with `isolation: "shared"` and put the worktree path in its brief as the only place it
    may edit. Never let it edit the main checkout.
-4. Create worktrees only because the user asked for them. Never stage, commit, push or remove them unless
-   told; removal is a destructive action and needs confirmation.
+4. Create worktrees only because the user asked for them. The child commits and pushes its own task branch
+   as the workspace rules allow (section 5); nobody else stages or commits in it unless told. Removing a
+   worktree is a destructive action and needs confirmation.
 
 Read-only children (reviews, investigations) may share the main checkout. Never let two writing children
 touch the same files at once.
 
 ## 5. Briefs
 
-Use `../coordinator/session-brief-template.md`. A child sees nothing of this conversation, so each brief
-stands alone, names the worktree path, branch and base (section 4), and restates the workspace's
-permission rules and any hold the user has set on that area.
+Use `session-brief-template.md` in this folder, not the one in `../coordinator/`: this one is written for
+Codex children. A child sees nothing of this conversation, so each brief stands alone, names the worktree
+path, branch and base (section 4), and restates the workspace's permission rules and any hold the user has
+set on that area.
+
+What a Codex child does and does not load on its own, so the brief can fill the gaps:
+
+- **Rules.** Codex reads `AGENTS.md` files on the path from the git root down to its start folder, never
+  from the folders below it.
+  A child that starts in the workspace root gets the workspace's rules, but not the product repo's. Name
+  the repo's rules file by absolute path in the brief and tell the child to read it first: the generated
+  `AGENTS.md` in the repo's main checkout (it embeds the workspace rules and the repo's `CLAUDE.local.md`),
+  or `CLAUDE.local.md` itself where no `AGENTS.md` exists. A worktree holds neither file, because both are
+  untracked, so always give the main checkout's path.
+- **Skills.** A Codex child sees the skills under `~/.agents/skills`, `~/.codex/skills` and the
+  workspace's `.agents/skills`, not those under `~/.claude/skills`. Before naming a skill in a brief,
+  check which of those folders has it. For a skill that is only under `~/.claude/skills`, give the absolute
+  path of its `SKILL.md` and tell the child to read and follow it.
+- **Database tools.** The workspace's `.codex/config.toml` gives a child started in the workspace root the
+  same MongoDB servers the workspace rules describe, under the same rules.
+
+**Commit and push.** A writing child commits its own work on its own task branch and pushes that branch to
+its own remote branch once its checks pass, after confirming `git rev-parse --abbrev-ref @{u}` is not a
+shared branch. That is the workspace's "do it, then report" group. Everything the workspace rules put in
+"one go-ahead" or "ask every time" (opening a PR, pushing a shared branch, merging, writing a shared
+database, triggering a pipeline) stays with you, done after the user approves. If the child cannot push
+from its sandbox, it reports that and you push the branch.
 
 Delegated children never watch pull requests, and a child that works on a PR ends with one line:
 `PR <full URL>, head <SHA>, checks and reviews <state>`.

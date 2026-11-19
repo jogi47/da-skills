@@ -1,8 +1,9 @@
-# Session brief template
+# Child brief template (T3 Code, Codex children)
 
-Copy this shape for every session the coordinator starts. Fill every section; write "none" rather
-than leaving one out. The new session has seen none of the coordinator's conversation, so name files
-by absolute path and state facts, not references to earlier discussion.
+Copy this shape for every child the coordinator starts. Fill every section; write "none" rather than
+leaving one out. The child has seen none of the coordinator's conversation and runs on Codex, so name
+files by absolute path, state facts rather than references to earlier discussion, and do not assume it
+has loaded any rules file or skill you have not named here.
 
 ```
 ## Goal
@@ -13,20 +14,26 @@ What this is part of and why. Decisions already made, the behaviour wanted, anyt
 Links or paths to the plan, ticket and PR (read them; they are not copied here).
 
 ## Repo, rules and workspace
-Repo: <absolute path>. Read its CLAUDE.md and CLAUDE.local.md (if present) before anything else.
-Where you work: <main checkout of <repo> | your own worktree of <repo> on branch <name>>.
-Branch: <name>, cut from <base> <plus the project's convention, for example --no-track>.
-Other sessions working at the same time: <none | which files they own, so you stay clear of them>.
+Repo: <absolute path of the repo's main checkout>.
+Rules: before anything else, read <absolute path of the main checkout's AGENTS.md, or its
+CLAUDE.local.md where there is no AGENTS.md> in full. It holds the workspace and repo rules and wins
+over this brief where they differ. Your worktree does not contain it.
+Where you work: <main checkout of <repo> | your own worktree at <absolute path>>.
+Branch: <name>, cut from origin/<base> with --no-track.
+Other children working at the same time: <none | which files they own, so you stay clear of them>.
 
-## Hard limits
-- No commit or push. The coordinator commits and pushes after the user approves.
-- <Any hold the user has set on this area, for example "do not run script X on any shared DB".>
-- No writes to shared or production databases.
-- Never run data or migration scripts against staging or production.
-- No pipeline or deploy triggers.
-- Leave changes in the working tree and list the files you changed.
-- Never copy secrets or personal data into your report.
-<For a review or investigation: read-only. Do not edit files or run anything that changes state.>
+## Limits
+- You may commit your own work on your branch, and push it to its own remote branch once the checks
+  under "Done when" pass. Before pushing, confirm `git rev-parse --abbrev-ref @{u}` is not dev,
+  development, stag, stage, main, production, sandbox or anyone else's branch. If the push fails, say
+  so and stop; the coordinator pushes.
+- Do not open, merge or close a PR, push any shared branch, or rewrite pushed commits.
+- Do not write to the sandbox, dev, stag or prod databases. Local MongoDB and local data only.
+- Do not run data or migration scripts against any shared environment.
+- Do not trigger, re-run or cancel any pipeline, workflow, deploy or store release.
+- Holds on this area: <none | the hold, for example "do not run script X on any shared DB">.
+- Never copy secrets or member personal data into files, commits or your report.
+<For a review or investigation: read-only. Edit nothing, commit nothing, run nothing that changes state.>
 
 ## Files or area you own
 - <absolute path or directory>
@@ -34,7 +41,8 @@ Touch nothing else. If another file needs changing, stop and say which and why.
 
 ## Steps
 1. ...
-Skills to load: <name, or none>
+Skills: <none | name, for a skill under ~/.agents/skills, ~/.codex/skills or the workspace's
+.agents/skills | "read and follow <absolute path>/SKILL.md", for a skill only under ~/.claude/skills>
 
 ## Done when
 - <checkable condition>
@@ -43,10 +51,12 @@ Skills to load: <name, or none>
 ## Report back (keep it short)
 Write anything long (findings, investigation results, data summaries) to <file or plan section>
 and give its path; keep the note itself to the points below.
-- Branch and head commit SHA you worked on or reviewed.
+- Branch, head commit SHA, and whether it is pushed (remote branch name).
 - Files changed, one line each.
 - Commands run and their results. Quote errors exactly.
 - What you did not do or could not check, and why.
 - Questions or decisions left for the coordinator.
-<For a review: findings with file, line, severity and a concrete failure case.>
+<For a review: branch and SHA reviewed, then findings with file, line, severity and a concrete
+failure case.>
+<For PR work: end with one line, PR <full URL>, head <SHA>, checks and reviews <state>.>
 ```
