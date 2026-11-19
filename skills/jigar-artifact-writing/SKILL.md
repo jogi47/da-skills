@@ -1,6 +1,7 @@
 ---
 name: jigar-artifact-writing
 description: Jigar's writing rules for every piece of text that goes into an artifact (documents, progress pages, checklists, release notes) and anything else he publishes from one, such as ticket comments and update messages drafted from a page. Covers wording only (banned words, openers and sentence shapes, UK spelling, no em-dashes or emoji, layout, register), with a checker script for the mechanical rules. Use whenever writing, editing or reviewing artifact text, before every publish, and when Jigar asks to check a page's wording.
+model: sonnet
 ---
 
 # Jigar's writing rules for artifacts
@@ -42,10 +43,10 @@ Each of these sounds machine-written. The fix is nearly always to make the plain
 
 ## Words to cut on sight
 
-- **Quietly and silently**, unless you mean actual noise. "Saving can no longer switch a product off silently" on the V1.5.1 page became "A save now asks before switching a product off".
+- **Quietly and silently**, unless you mean actual noise.
 - **Deliberately.** If a choice needs a reason, give the reason.
 - **"Earns its place"** and the family around it. If something belongs, include it and say nothing.
-- **"Read" as interpretation:** "reads as", "reads like", "my read is". Use it only when someone is literally reading something. "Values read as they do in the report CSV" became "Values appear as they do in the report CSV".
+- **"Read" as interpretation:** "reads as", "reads like", "my read is". Use it only when someone is literally reading something.
 
 ## Openings, closings and layout
 
@@ -57,7 +58,7 @@ Each of these sounds machine-written. The fix is nearly always to make the plain
 
 ## Veridate wording
 
-Never write "the app" on its own. It is "the mobile app" or "the web portal" every time, because the product has both and the reader has to guess which you mean.
+On Veridate pages, never write "the app" on its own. It is "the mobile app" or "the web portal" every time, because the product has both and the reader has to guess which you mean. The checker applies this rule only to files that mention Veridate; pass `--veridate` for a Veridate page that does not.
 
 ## Before it goes anywhere
 

@@ -2,6 +2,10 @@
 """Fetch a Slack channel's recent history (plus threads) as readable text.
 
 Token comes from SLACK_TOKEN or the macOS Keychain, never from a file or an argument.
+
+Machine-local settings live outside the skill, in ~/.config/slack-digest/ (or SLACK_DIGEST_HOME):
+  config.json  optional, {"keychain_service": "<Keychain service name>"}
+  users.json   optional map of Slack user id -> display name, used when --users is not given
 """
 
 import argparse
@@ -16,7 +20,21 @@ import urllib.request
 from datetime import datetime, timedelta
 
 API = "https://slack.com/api/"
-KEYCHAIN_SERVICE = os.environ.get("SLACK_KEYCHAIN_SERVICE", "slack-bot")
+CONFIG_DIR = os.path.expanduser(os.environ.get("SLACK_DIGEST_HOME", "~/.config/slack-digest"))
+
+
+def local_config():
+    path = os.path.join(CONFIG_DIR, "config.json")
+    if os.path.exists(path):
+        with open(path) as f:
+            return json.load(f)
+    return {}
+
+
+KEYCHAIN_SERVICE = (os.environ.get("SLACK_KEYCHAIN_SERVICE")
+                    or local_config().get("keychain_service")
+                    or "slack-bot")
+DEFAULT_USERS = os.path.join(CONFIG_DIR, "users.json")
 
 
 def token():
@@ -149,7 +167,8 @@ def main():
     p.add_argument("--days", type=float, default=3, help="how far back (default 3)")
     p.add_argument("--limit", type=int, default=500, help="max messages (default 500)")
     p.add_argument("--no-threads", action="store_true", help="skip thread replies")
-    p.add_argument("--users", help="optional local JSON map of user id -> display name")
+    p.add_argument("--users", default=DEFAULT_USERS,
+                   help="JSON map of user id -> display name (default: %(default)s, if present)")
     p.add_argument("--files", metavar="DIR",
                    help="download attached files (screenshots) into DIR and list the paths; "
                         "then Read the image paths to view them")

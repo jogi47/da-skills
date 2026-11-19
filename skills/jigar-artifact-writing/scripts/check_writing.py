@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Check artifact text against Jigar's writing rules (the mechanical ones).
 
-Usage: check_writing.py <file.html|file.md|file.txt> [more files]
+Usage: check_writing.py [--veridate] <file.html|file.md|file.txt> [more files]
+
+The "the app" rule is Veridate's. It applies to a file that mentions Veridate anywhere, or to every
+file when --veridate is given; on other products' pages it is not checked.
 
 Reads the visible prose only: <script>, <style>, <code> and <pre> blocks, HTML tags, Markdown code
 fences and code spans are skipped, and HTML entities are decoded first (so &mdash; is caught).
@@ -133,7 +136,7 @@ def visible_lines(raw, is_html):
 # ----------------------------------------------------------------------------- checks
 
 
-def check_line(line):
+def check_line(line, veridate=False):
     found = []
 
     def add(level, rule, match):
@@ -156,8 +159,9 @@ def check_line(line):
     for pattern, uk in US_SPELLINGS.items():
         for m in re.finditer(rf"\b{pattern}\b", line, re.I):
             add("HARD", f"American spelling ({uk})", m.group(0))
-    for m in re.finditer(r"\bthe app\b", line, re.I):
-        add("HARD", "\"the app\" on its own: write the mobile app or the web portal", m.group(0))
+    if veridate:
+        for m in re.finditer(r"\bthe app\b", line, re.I):
+            add("HARD", "\"the app\" on its own: write the mobile app or the web portal", m.group(0))
 
     for pattern, rule in CUT_WORDS:
         for m in re.finditer(rf"\b(?:{pattern})\b", line, re.I):
@@ -173,26 +177,30 @@ def check_line(line):
     return found
 
 
-def check_file(path):
+def check_file(path, veridate=False):
     with open(path, encoding="utf-8") as f:
         raw = f.read()
     is_html = path.lower().endswith((".html", ".htm")) or raw.lstrip().lower().startswith(("<!doctype", "<html"))
+    # The "the app" rule is Veridate's: apply it when asked, or when the file mentions Veridate.
+    veridate = veridate or bool(re.search(r"veridate", raw, re.I))
     findings = []
     for number, line in enumerate(visible_lines(raw, is_html), start=1):
-        for level, rule, match in check_line(line):
+        for level, rule, match in check_line(line, veridate):
             context = re.sub(r"\s+", " ", line).strip()
             findings.append((number, level, rule, match, context[:110]))
     return findings
 
 
-def main(paths):
+def main(args):
+    veridate = "--veridate" in args
+    paths = [a for a in args if a != "--veridate"]
     if not paths:
         print(__doc__)
         return 2
     order = {"HARD": 0, "CUT": 1, "LOOK": 2}
     hard = 0
     for path in paths:
-        findings = sorted(check_file(path), key=lambda f: (order[f[1]], f[0]))
+        findings = sorted(check_file(path, veridate), key=lambda f: (order[f[1]], f[0]))
         counts = {level: sum(1 for f in findings if f[1] == level) for level in order}
         hard += counts["HARD"]
         print(f"{path}: {counts['HARD']} HARD, {counts['CUT']} CUT, {counts['LOOK']} LOOK")

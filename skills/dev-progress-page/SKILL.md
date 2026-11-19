@@ -7,6 +7,7 @@ description: Build and keep a development progress page as a standalone HTML pag
 
 A progress page tells the team, QA and the client contact what each ticket now does, how to test it and
 where it is (built, merged, on Dev, waiting). Use the target project's tickets, environments and build names.
+If the project already has earlier sprint or release pages, read the newest one before building a new page.
 
 Every word on the page follows the `jigar-artifact-writing` skill. Load it before writing text, and run
 its checker before every publish.
@@ -80,7 +81,7 @@ wiped mid-session.
 
 ## Adding a ticket to an existing page
 
-Pages built by hand before this skill (Sprint 15 and 16) have no JSON. Render the one panel and paste it
+Pages built by hand have no JSON. Render the one panel and paste it
 under its section, then add its strip square and update the section's count and the strip count:
 
 ```bash
@@ -112,7 +113,10 @@ once it is deployed.
 3. Inspect it with available browser or rendering tools at phone and desktop widths, with one panel opened.
 4. Deliver the HTML with its screenshots, or use the user-selected publishing tool when publishing is requested.
    Keep screenshot paths under `shots/` relative to the page. Follow the selected tool's asset-upload
-   and update semantics; preserve existing attachments when updating.
+   and update semantics; preserve existing attachments when updating. In Claude, publish with the
+   Artifact tool: screenshots go in the `files` map as `"shots/<file>": "<absolute path>"`, and on an
+   update send only new or changed screenshots, since files left out are kept.
 5. From another session, pass the page's URL as `url` and read the live version first: someone may have
    published since. Merge their changes in rather than overwrite them.
-6. Give the resulting file or share link. Include a share key only when required by the selected host.
+6. Give the resulting file or share link. Include a share key only when required by the selected host
+   (for a claude.ai artifact shared outside the session, the link with its `?sk=` key).
