@@ -16,8 +16,8 @@ else in that skill applies unchanged: role, scope (only the children you started
 coordinator count as the user's own threads), keeping state on disk (decisions in the plan doc, holds as
 memories), reuse first for follow-ups, a fresh child for every review round, briefs, pages, tickets and
 messages for others, verifying before "done", reporting and permissions. Wherever it says "session",
-read "child thread". Read it once at the start. Where the two disagree on tools, models, the ledger or
-worktrees, this file wins. The workspace's own `CLAUDE.md` and `CLAUDE.local.md` (if present) win over both.
+read "child thread". Read it once at the start. Where the two disagree on tools, models, the ledger,
+worktrees or briefs, this file wins. The workspace's own `CLAUDE.md` and `CLAUDE.local.md` (if present) win over both.
 
 Running this skill authorises you to delegate, brief, read and cancel children in this workspace. It grants
 no git, deploy, database or posting permission the user has not given in chat.
@@ -25,18 +25,20 @@ no git, deploy, database or posting permission the user has not given in chat.
 ## 1. Tools
 
 T3 tools are deferred. Load them with one `ToolSearch` call:
-`select:mcp__t3-code__orchestrator_capabilities,mcp__t3-code__delegate_task,mcp__t3-code__task_status,mcp__t3-code__task_cancel,mcp__t3-code__t3_thread_read,mcp__t3-code__t3_thread_send,mcp__t3-code__t3_thread_list,mcp__t3-code__t3_project_list`
+`select:mcp__t3-code__orchestrator_capabilities,mcp__t3-code__delegate_task,mcp__t3-code__task_status,mcp__t3-code__task_cancel,mcp__t3-code__t3_thread_read,mcp__t3-code__t3_thread_send,mcp__t3-code__t3_thread_list,mcp__t3-code__t3_project_list,mcp__t3-code__link_pull_request,mcp__t3-code__watch_pull_request,mcp__t3-code__unwatch_pull_request`
 
 | Need | Tool |
 |---|---|
 | Find this workspace's project | `t3_project_list`; match the project whose folder is this session's working directory |
-| List this workspace's threads | `t3_thread_list` with that `projectId`; never use `allProjects` and never read other projects' threads |
+| List this workspace's threads | `t3_thread_list` with that `projectId`, paged with `cursor` until `nextCursor` is null; never use `allProjects` and never read other projects' threads |
 | This coordinator's own thread id | `currentThreadId` in the `t3_thread_list` result |
-| Start a child | `delegate_task` with a full brief in `task` |
-| Follow-up to an idle child that has the context | `t3_thread_send` to that child's thread, with only the delta (`/coordinator` sections 5 and 7); it starts a turn there. Never to a reviewer, never to the user's own threads |
+| Which children are yours | threads whose `parentThreadId` is your `currentThreadId`. Children with any other parent (an earlier coordinator's included) are the user's own threads |
+| Start a child | `delegate_task` with a full brief in `task` (section 3 for its settings) |
+| Follow-up to an idle child that has the context | `t3_thread_send` to that child's thread with `mode: "queue"` (or `"auto"`) and only the delta (`/coordinator` sections 5 and 7). A send to a finished child starts a new task and returns a new `taskId`: record it in the ledger and use it for `task_status` and `task_cancel`. Never `restart`; `steer` only to correct a turn that is still running. Never to a reviewer, never to the user's own threads |
 | Check a child | `task_status`, once, after its completion wakes you |
 | Read a child's transcript | `t3_thread_read` with a low `limit` and `maxCharsPerItem`, paged with `afterPosition` |
 | Stop a child | `task_cancel`, never `t3_thread_interrupt` on a child |
+| A PR you opened | `link_pull_request` with its full URL straight after opening it; `watch_pull_request` while it waits on checks or reviews you are tracking, `unwatch_pull_request` when that wait is over. Children never link or watch |
 
 Do not poll. A running child wakes you when it finishes. Never call `task_status` on a running child,
 and never invent a result that has not arrived. Name a thread in your reply by its `link`, verbatim.
@@ -44,12 +46,14 @@ and never invent a result that has not arrived. Name a thread in your reply by i
 ## 2. Opening move
 
 1. Read the workspace's `CLAUDE.md` and `CLAUDE.local.md` (if present) so every brief carries their
-   rules. Run the ledger cleanup and create your own empty ledger (section 2a). After a compaction,
-   read your own ledger instead; never another coordinator's.
-2. Find the workspace's project with `t3_project_list`, then `t3_thread_list` with its `projectId`. Read the
-   latest messages only of threads that are running, waiting on the user, or active in the last few days,
-   with a small `limit` (such as 3); list older idle threads by title only. Read only; do not message or
-   cancel anything yet.
+   rules. Find the workspace's project with `t3_project_list`, then list all its threads with
+   `t3_thread_list` (every page). That gives your `currentThreadId` and the live thread ids the ledger
+   needs; this runs even when steps 2 and 3 are skipped. Then run the ledger cleanup and create your own
+   empty ledger (section 2a). After a compaction, read your own ledger instead; never another
+   coordinator's.
+2. From that list, read the latest messages only of threads that are running, waiting on the user, or
+   active in the last few days, with a small `limit` (such as 3); list older idle threads by title only.
+   Read only; do not message or cancel anything yet.
 3. Summarise in a few lines: running, idle, waiting on the user, and what each is about. Link each thread.
 
 Then take the user's argument, if any, as the first request.
@@ -66,9 +70,9 @@ gitignored, closing), with these T3 differences:
   comes from `t3_thread_list`; note it in the ledger's first line so a compaction summary carries it.
 - Cleanup touches only other `t3-*.md` files directly in `temp/coordinator/`, never `desktop-*` files
   (those belong to `/coordinator` in the Claude desktop app). Move one, unread, into
-  `temp/coordinator/archive/` when its thread id is missing from this project's `t3_thread_list` or
-  is archived there, or the file has not changed for 3 days; otherwise leave it, as that coordinator
-  may still be running. Archived files older than 14 days are deleted (the user approved this on
+  `temp/coordinator/archive/` when its thread id is missing from this project's full `t3_thread_list`
+  (every page read; a thread on an unread page is not missing), or the file has not changed for 3 days;
+  otherwise leave it, as that coordinator may still be running. Archived files older than 14 days are deleted (the user approved this on
   19 Nov 2026 for these ledger files only). Report counts in one line, never ledger contents.
 
 ## 3. Models and providers
@@ -87,6 +91,11 @@ gitignored, closing), with these T3 differences:
 - A different model or effort applies only when the user names it for that task; find its provider in the
   capabilities result and set the same three `target` fields.
 - Set `role` to match the work: `implementation`, `research`, `review`, `design` or `test`.
+- Pass only Codex option ids in `target.options` (`reasoningEffort`, and `serviceTier` only if the user
+  names one), never this session's Claude options such as `effort` or `fastMode`.
+- Leave `runtimeMode` and `interactionMode` out so the child inherits yours; never pass a higher
+  `runtimeMode`. Leave `mode` at its default, `"async"`; never `"wait"`, which blocks you until the child
+  finishes.
 
 ## 4. Worktrees and branches
 
@@ -121,6 +130,10 @@ For a task in a product repo opened from the docs repo:
 
 Read-only children (reviews, investigations) may share the main checkout. Never let two writing children
 touch the same files at once.
+
+When the user has not asked for a worktree, a writing child works in the product repo's main checkout,
+reached from the workspace folder, with one writer at a time per repo. If two writers on one repo are
+needed at once, ask the user for a worktree (steps above) rather than queuing silently.
 
 The rest of `/coordinator` section 8 still applies here: the batch preview line per task, explicit-path
 commits when two writers share a checkout and branch, one owner at a time for the local API, Redis and
@@ -166,6 +179,10 @@ Verify as in `/coordinator` section 11, report as in section 9, and handle pages
 for others as in section 10. When a child's completion wakes you, read its latest messages with
 `t3_thread_read` before acting; a finished turn can mean it is waiting on a background job. When work
 has landed, offer to cancel or archive the children you started, never the user's own threads.
+
+When the user hands you the PR step (`/coordinator` section 9), open the PR yourself, then link it and,
+while it waits on checks or reviews you are tracking, watch it (section 1). Unwatch it once that wait is
+over or before you hand the work back.
 
 Permissions follow the workspace's rules and `/coordinator` section 12: a step that needs asking is done
 by you after the user approves it, never by passing the approval to a child, and a child waiting on an
