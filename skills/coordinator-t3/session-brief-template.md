@@ -25,8 +25,9 @@ Other children working at the same time: <none | which files they own, so you st
 ## Limits
 - You may commit your own work on your branch, and push it to its own remote branch once the checks
   under "Done when" pass. Before pushing, confirm `git rev-parse --abbrev-ref @{u}` is not dev,
-  development, stag, stage, main, production, sandbox or anyone else's branch. If the push fails, say
-  so and stop; the coordinator pushes.
+  development, stag, stage, main, production, sandbox or anyone else's branch. If a commit or the push
+  fails (for example blocked by your sandbox), quote the error, leave the work in place and stop; the
+  coordinator does that step.
 - Do not open, merge or close a PR, push any shared branch, or rewrite pushed commits.
 - Do not write to the sandbox, dev, stag or prod databases. Local MongoDB and local data only.
 - Do not run data or migration scripts against any shared environment.

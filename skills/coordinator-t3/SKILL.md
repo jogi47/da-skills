@@ -72,8 +72,9 @@ gitignored, closing), with these T3 differences:
   (those belong to `/coordinator` in the Claude desktop app). Move one, unread, into
   `temp/coordinator/archive/` when its thread id is missing from this project's full `t3_thread_list`
   (every page read; a thread on an unread page is not missing), or the file has not changed for 3 days;
-  otherwise leave it, as that coordinator may still be running. Archived files older than 14 days are deleted (the user approved this on
-  19 Nov 2026 for these ledger files only). Report counts in one line, never ledger contents.
+  otherwise leave it, as that coordinator may still be running. Archived files older than 14 days are
+  deleted (the user approved this on 19 Nov 2026 for these ledger files only). Report counts in one line,
+  never ledger contents.
 
 ## 3. Models and providers
 
@@ -106,14 +107,22 @@ product-repo work.
 This is the one place this skill goes against T3's general guidance to let `isolation: "worktree"` make a
 child's checkout. It is deliberate: that option branches from the parent's commit in the wrong repo, so it
 cannot give a product-repo worktree off the user's chosen base. Create the worktree by hand only when the
-user has asked for one, and say in your message that you are doing so and why. If the session already runs
+user has asked for one or agreed to one you proposed (step 2), and say in your message that you are doing
+so and why. If the session already runs
 inside the product repo itself, `isolation: "worktree"` is fine and the manual steps are not needed.
 
 For a task in a product repo opened from the docs repo:
 
-1. Tell the user, in the same message that starts the child, which repo, which base branch and which branch
-   name the work uses.
-2. Create the worktree by hand, outside the sandbox (`.git/worktrees` is read-only inside it), once per repo
+1. Check the base first. Fetch each repo the task touches and confirm the base exists on its remote
+   (`git -C <repo> ls-remote --heads origin <base>`). Repos can name their dev line differently, so check
+   each one rather than assuming the same name everywhere.
+2. Ask once, before starting anything. Send one message that lists, per task: ticket and title, repo,
+   base, branch name, main checkout or worktree, and the exact `git worktree add` lines if any, and end it
+   with one question, for example "create these worktrees and start the children?". The user's yes covers
+   the worktrees and the children together; do not ask again step by step. Use a worktree only when the
+   user asked for one or says yes to one you proposed. When they only ask which you will use, propose one
+   and wait for that yes.
+3. Create the worktree by hand, outside the sandbox (`.git/worktrees` is read-only inside it), once per repo
    the task touches:
    `git -C <repo> worktree add --no-track -b <topic-branch> <worktree-path> origin/<base>`
    Branch names are topic names only, with no client names. The base branch is what the user said, or
@@ -122,10 +131,10 @@ For a task in a product repo opened from the docs repo:
    `<workspace>/tmp/worktrees/<repo>-<topic>`. A child starts in the workspace root, and a path inside it
    stays within the child's writable area; a path elsewhere may not be writable for it. Check that the
    folder is ignored by the workspace repo (`git check-ignore`) before using it.
-3. Start the child with `isolation: "shared"` and put the worktree path in its brief as the only place it
+4. Start the child with `isolation: "shared"` and put the worktree path in its brief as the only place it
    may edit. Never let it edit the main checkout.
-4. Create worktrees only because the user asked for them. The child commits and pushes its own task branch
-   as the workspace rules allow (section 5); nobody else stages or commits in it unless told. Removing a
+5. Create worktrees only because the user asked for them or agreed in step 2. The child commits and
+   pushes its own task branch as the workspace rules allow (section 5); nobody else stages or commits in it unless told. Removing a
    worktree is a destructive action and needs confirmation.
 
 Read-only children (reviews, investigations) may share the main checkout. Never let two writing children
@@ -162,13 +171,16 @@ What a Codex child does and does not load on its own, so the brief can fill the 
   path of its `SKILL.md` and tell the child to read and follow it.
 - **Database tools.** The workspace's `.codex/config.toml` gives a child started in the workspace root the
   same MongoDB servers the workspace rules describe, under the same rules.
+- **Branch conventions.** Before writing the brief, check memory and the repo's rules for that area's
+  branch rules (for example one branch for a batch of fixes, naming, `--no-track`) and state them in the
+  brief and in the section 4 message. Do not wait for the user to repeat a rule memory already holds.
 
 **Commit and push.** A writing child commits its own work on its own task branch and pushes that branch to
 its own remote branch once its checks pass, after confirming `git rev-parse --abbrev-ref @{u}` is not a
 shared branch. That is the workspace's "do it, then report" group. Everything the workspace rules put in
 "one go-ahead" or "ask every time" (opening a PR, pushing a shared branch, merging, writing a shared
-database, triggering a pipeline) stays with you, done after the user approves. If the child cannot push
-from its sandbox, it reports that and you push the branch.
+database, triggering a pipeline) stays with you, done after the user approves. If the child cannot commit
+or push from its sandbox, it reports that and you do that step.
 
 Delegated children never watch pull requests, and a child that works on a PR ends with one line:
 `PR <full URL>, head <SHA>, checks and reviews <state>`.
@@ -179,6 +191,12 @@ Verify as in `/coordinator` section 11, report as in section 9, and handle pages
 for others as in section 10. When a child's completion wakes you, read its latest messages with
 `t3_thread_read` before acting; a finished turn can mean it is waiting on a background job. When work
 has landed, offer to cancel or archive the children you started, never the user's own threads.
+
+**Review straight after the work.** When a writing child reports done and your own check passes, start a
+fresh Terra reviewer for that repo in the same turn (`/coordinator` section 6), without waiting for a push
+or a PR. Until that review is back and its needed fixes have landed, report the task as "built, in
+review", never "done" or "checked". Say which parts you checked yourself and which are still the child's
+claim.
 
 When the user hands you the PR step (`/coordinator` section 9), open the PR yourself, then link it and,
 while it waits on checks or reviews you are tracking, watch it (section 1). Unwatch it once that wait is
