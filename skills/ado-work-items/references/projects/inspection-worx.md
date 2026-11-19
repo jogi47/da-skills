@@ -25,6 +25,65 @@ same rules serve every workspace.
 - Ticket content is client data. Summarise it; do not paste whole descriptions into repos or plan docs.
   Drafts live in the workspace's gitignored `tmp/`.
 
+## Reading
+
+Current sprint, then its items (add `AND [System.AssignedTo] = @Me` for your own):
+
+```sh
+az boards iteration team list --org https://tappable.visualstudio.com --project "Inspection Worx" \
+  --team "Inspection Worx Team" --timeframe current --query '[].{name:name,path:path}' -o json
+
+az boards query --org https://tappable.visualstudio.com --project "Inspection Worx" --wiql \
+  "SELECT [System.Id], [System.Title], [System.State], [System.AssignedTo] FROM WorkItems
+   WHERE [System.IterationPath] = 'Inspection Worx\\<Sprint name>' ORDER BY [System.Id]" \
+  --query '[].{id:id, title:fields."System.Title", state:fields."System.State"}' -o json
+```
+
+One ticket, everything or chosen fields (`--expand` cannot be combined with `--fields`):
+
+```sh
+az boards work-item show --org https://tappable.visualstudio.com --id <id> --expand all -o json
+az boards work-item show --org https://tappable.visualstudio.com --id <id> \
+  --query '{type:fields."System.WorkItemType", state:fields."System.State", title:fields."System.Title"}'
+```
+
+Its comments (HTML in `text` and `renderedText`):
+
+```sh
+az devops invoke --org https://tappable.visualstudio.com --area wit --resource comments \
+  --route-parameters project="Inspection Worx" workItemId=<id> --api-version 7.1-preview -o json
+```
+
+A wiki page by id (drop `includeContent=true` for just the path), and pull requests:
+
+```sh
+az devops invoke --org https://tappable.visualstudio.com --area wiki --resource pages \
+  --route-parameters project="Inspection Worx" wikiIdentifier=Inspection-Worx.wiki \
+  --query-parameters id=<page id> includeContent=true --api-version 7.1 -o json
+
+az repos pr list --org https://tappable.visualstudio.com --project "Inspection Worx" \
+  --repository inspection-worx-be --status active \
+  --query '[].{id:pullRequestId, title:title, src:sourceRefName, tgt:targetRefName}' -o json
+az repos pr show --org https://tappable.visualstudio.com --id <pr id> -o json
+```
+
+Field names go through `fields."System.X"` in `--query`; custom fields are `fields."Custom.X"`. Run one
+`--expand all` first to see what a ticket type actually carries.
+
+## Posting a comment, only when asked, ticket by ticket
+
+1. Check the text against the tone rules, show the final text for that ticket and get a yes.
+2. Write `{"text": "<html>"}` to the scratchpad and post it:
+
+   ```sh
+   az devops invoke --org https://tappable.visualstudio.com --area wit --resource comments \
+     --route-parameters project="Inspection Worx" workItemId=<id> --http-method POST \
+     --in-file <scratchpad>/comment-<id>.json --api-version 7.1-preview -o json
+   ```
+
+3. Read the comments back to confirm it landed. The body is HTML (`<div>`, `<b>`, `<ol>`, `<ul>`,
+   `<code>`, `<a href>`); convert a Markdown draft and escape `<` and `>` in the text.
+
 ## Images in a ticket
 
 Screenshots pasted into a description, repro steps or comment are inline

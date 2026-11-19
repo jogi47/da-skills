@@ -51,6 +51,12 @@ az boards work-item create --org "<org-url>" --project "<project>" --type "<veri
 az boards work-item relation add --org "<org-url>" --id <child-id> --relation-type parent --target-id <parent-id>
 ```
 
+Undo a wrong parent link (only for a link this session created):
+
+```sh
+az boards work-item relation remove --org "<org-url>" --id <child-id> --relation-type parent --target-id <parent-id> --yes
+```
+
 Omit unrequested fields. Task creation and parent linking are separate writes; if one fails, report
 partial state and inspect before retrying. Confirm attachment support and comment format before
 promising inline screenshots; local CLI limitations are not universal service limitations.
