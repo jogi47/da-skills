@@ -66,11 +66,11 @@ skill, a request to edit it); step 1 still runs. Run them the first time a later
 `/coordinator` section 4 applies (start fresh, never read another coordinator's ledger, agents only,
 gitignored, closing), with these T3 differences:
 
-- Your ledger is `temp/coordinator/t3-<currentThreadId>.md` at the workspace root. `currentThreadId`
+- Your ledger is `tmp/coordinator/t3-<currentThreadId>.md` at the workspace root. `currentThreadId`
   comes from `t3_thread_list`; note it in the ledger's first line so a compaction summary carries it.
-- Cleanup touches only other `t3-*.md` files directly in `temp/coordinator/`, never `desktop-*` files
+- Cleanup touches only other `t3-*.md` files directly in `tmp/coordinator/`, never `desktop-*` files
   (those belong to `/coordinator` in the Claude desktop app). Move one, unread, into
-  `temp/coordinator/archive/` when its thread id is missing from this project's full `t3_thread_list`
+  `tmp/coordinator/archive/` when its thread id is missing from this project's full `t3_thread_list`
   (every page read; a thread on an unread page is not missing), or the file has not changed for 3 days;
   otherwise leave it, as that coordinator may still be running. Archived files older than 14 days are
   deleted (the user approved this on 19 Nov 2026 for these ledger files only). Report counts in one line,

@@ -53,13 +53,13 @@ Run steps 2 and 3 the first time a later request needs them.
 
 You will be compacted; keep what matters where it survives.
 
-- **State ledger:** one short file per coordinator, `temp/coordinator/desktop-<id>.md` at the workspace root
+- **State ledger:** one short file per coordinator, `tmp/coordinator/desktop-<id>.md` at the workspace root
   (not the scratchpad), where `<id>` is this session's own id: `$CLAUDE_CODE_HOST_SESSION_ID` (the
   `local_…` id the session tools use), or `$CLAUDE_CODE_SESSION_ID` if that is empty. The id comes
   from the environment, so it survives compaction. Update it on every change: sessions you started (id,
   title, repo, task, state), branches and PRs, open decisions, holds, what waits on the user. After a
   compaction, read your own ledger first, found by that id.
-- **Agents only:** before the first write, confirm with `git check-ignore temp/coordinator/x.md` that
+- **Agents only:** before the first write, confirm with `git check-ignore tmp/coordinator/x.md` that
   the folder is gitignored; if it is not, ask the user where it should go instead of creating it. Never
   link a ledger from a doc, a plan or a page, and never stage or commit one.
 - **Start fresh.** A new coordinator creates its own empty ledger and never reads another
@@ -70,14 +70,14 @@ You will be compacted; keep what matters where it survives.
   (not archived) sessions from `list_sessions` (a cheap call; it runs even when steps 2 and 3 of the
   opening move are skipped). Then run the steps as one shell script, given those ids, that prints
   only counts and file names, never ledger contents:
-  1. Every other `desktop-*.md` file directly in `temp/coordinator/` belongs to an earlier coordinator.
-     Move each one, unread, into `temp/coordinator/archive/` when its session is archived or missing
+  1. Every other `desktop-*.md` file directly in `tmp/coordinator/` belongs to an earlier coordinator.
+     Move each one, unread, into `tmp/coordinator/archive/` when its session is archived or missing
      from the session list, or the file has not changed for 3 days. Leave it in place otherwise: that
      coordinator may still be running. Leave files with any other prefix alone: they belong to
      coordinators on another host (for example `t3-*` from `/coordinator-t3`), whose ids are not in
      this session list.
-  2. Delete files in `temp/coordinator/archive/` older than 14 days. The user approved this deletion
-     on 19 Nov 2026 for these ledger files only; it covers nothing else in `temp/`.
+  2. Delete files in `tmp/coordinator/archive/` older than 14 days. The user approved this deletion
+     on 19 Nov 2026 for these ledger files only; it covers nothing else in `tmp/`.
   3. Report in one line: how many ledgers were archived, how many deleted, how many left as live.
 - **Closing.** When the user says the coordinator's work is done, or asks to archive this session, add
   a final "closed" line with the date to your own ledger and move it into `archive/` yourself.
