@@ -14,9 +14,17 @@ Resolve organisation, project, team and repository from the user's URL/request, 
 verified local configuration. Confirm ambiguous values before querying. Pass the resolved organisation
 and project explicitly where supported; do not change global CLI defaults or switch accounts.
 
-Discover the team's current iteration, work item types, fields, valid states, relations and identities
-before drafting a transition or creating tasks. Project process rules vary. Never hardcode people,
-email addresses, sprint paths, a state such as `In Review`, or a requirement to create a QA task.
+**Project profiles.** When the resolved project has a profile, read it before anything else and follow
+it. A profile holds that project's fixed values, tool gotchas, ticket-link format, states in use and
+its finished-work workflow, and it replaces the discovery steps below for the things it states.
+- Clubmatch (Tappable org, project Clubmatch): [references/projects/clubmatch.md](references/projects/clubmatch.md)
+- Inspection Worx / Veridate: [references/projects/inspection-worx.md](references/projects/inspection-worx.md)
+
+For a project with no profile, discover the team's current iteration, work item types, fields, valid
+states, relations and identities before drafting a transition or creating tasks. Project process rules
+vary. For such a project never hardcode people, email addresses, sprint paths, a state such as
+`In Review`, or a requirement to create a QA task. To add a project, write a profile with the same
+headings as the existing ones and link it here.
 
 If tools, extensions or authentication are missing, report the prerequisite. Do not sign in, install
 extensions or change authentication without appropriate authorisation.
@@ -70,8 +78,9 @@ items. Obtain approval unless the same concrete changes were already explicitly 
 existing approval rather than asking repeatedly.
 
 Before a QA handoff, inspect existing child tasks to avoid duplicates. Apply the project's documented
-workflow and user-selected assignees; ask when either is missing. Create/link tasks only when within
-the approved scope. Do not interpret a generic status request as permission for new tasks.
+workflow (its profile) and user-selected assignees; ask when either is missing. Create/link tasks only
+when within the approved scope. Do not interpret a generic status request, or "status only", as
+permission for new tasks, comments or other field changes.
 
 Use structured payloads or files to preserve text. Read every modified item or comment back, verify
 that it matches the proposal and report item-by-item results. If a write's result is uncertain, read

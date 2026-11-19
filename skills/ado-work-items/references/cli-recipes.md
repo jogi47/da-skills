@@ -24,9 +24,17 @@ Comments via the WIT API:
 az devops invoke --org "<org-url>" --area wit --resource comments --route-parameters project="<project>" workItemId=<id> --api-version 7.1-preview.4 -o json
 ```
 
-This version comes from the published comments API. A server/extension may expose another compatible
-version; inspect an actual version error and supported API metadata rather than assuming a past
-project's workaround applies everywhere. Continue with returned continuation tokens when paged.
+`7.1-preview.4` is the published version, but the Tappable organisation (Clubmatch and Inspection
+Worx) rejects it with "could not convert string to float"; use `7.1-preview` there, in the write below
+too. Elsewhere inspect an actual version error and supported API metadata rather than assuming. Pass
+`--org` and each argument as separate literal arguments (an unquoted shell variable holding several
+arguments may not split in zsh). Continue with returned continuation tokens when paged.
+
+Children of an item are read from its relations, not a flat WIQL `[System.Parent]` query:
+
+```sh
+az boards work-item show --org "<org-url>" --id <id> --expand relations -o json   # Hierarchy-Forward = children
+```
 
 For wiki content, resolve the wiki id and page id/path first, then use the installed wiki commands
 or the wiki pages API. Do not assume a wiki's name equals the project name.
@@ -37,7 +45,7 @@ Write a JSON payload to a private temporary file using a JSON serializer, for ex
 with a `text` property. Never interpolate client text into shell source.
 
 ```sh
-az devops invoke --org "<org-url>" --area wit --resource comments --route-parameters project="<project>" workItemId=<id> --http-method POST --in-file "<comment-json-file>" --api-version 7.1-preview.4 -o json
+az devops invoke --org "<org-url>" --area wit --resource comments --route-parameters project="<project>" workItemId=<id> --http-method POST --in-file "<comment-json-file>" --api-version "<7.1-preview on Tappable>" -o json
 az boards work-item update --org "<org-url>" --id <id> --state "<verified-state>" --assigned-to "<verified-identity>"
 az boards work-item create --org "<org-url>" --project "<project>" --type "<verified-type>" --title "<approved-title>" --iteration "<verified-path>" -o json
 az boards work-item relation add --org "<org-url>" --id <child-id> --relation-type parent --target-id <parent-id>
