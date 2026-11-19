@@ -15,7 +15,7 @@ This skill replaces the host-specific parts of `/coordinator` (in `../coordinato
 else in that skill applies unchanged: role, scope (only the children you started), keeping state on disk
 (the state ledger, decisions in the plan doc, holds as memories), one fresh child per task, independent
 reviews, briefs, verifying before "done", reporting and permissions. Read it once at the start. Where the two disagree on
-tools or worktrees, this file wins. The workspace's own `CLAUDE.md` and `CLAUDE.local.md` win over both.
+tools, models or worktrees, this file wins. The workspace's own `CLAUDE.md` and `CLAUDE.local.md` win over both.
 
 Running this skill authorises you to delegate, brief, read and cancel children in this workspace. It grants
 no git, deploy, database or posting permission the user has not given in chat.
@@ -53,14 +53,17 @@ Then take the user's argument, if any, as the first request.
 
 - Call `orchestrator_capabilities` once per thread before the first `delegate_task`, and again only after an
   error or when the user names a different provider.
-- Default for every child is the inherited provider and model. Never switch provider or model on your own,
-  and never fall back to a native subagent, Workflow or a CLI when the one asked for is unavailable. Say
-  so and ask.
-- When the user names a model (for example `gpt-6.1-terra`), find its provider in the capabilities result
-  and set `target.providerInstanceId`, `target.model` and `target.options` (such as reasoning effort).
-  Confirm the effort with the user if they did not give one.
-- Reviews run on a current Sonnet unless the user names another model. Mechanical lookups (search, read,
-  summarise) may use a cheaper model; design-heavy work inherits.
+- Default for EVERY child, whatever its role (implementation, review, research, design, test, mechanical
+  lookups), is `gpt-6.1-terra` on the Codex provider (`providerInstanceId` `codex`), set on every
+  `delegate_task` through `target.providerInstanceId`, `target.model` and `target.options`. Never let a child
+  inherit this session's Claude model, and never pick Sonnet or another model for reviews or lookups on your
+  own. The user decided this; do not re-ask it.
+- Reasoning effort for Terra children is `high` (`reasoningEffort`) unless the user gives another. Do not ask
+  about it each time.
+- If Codex or `gpt-6.1-terra` is missing from the capabilities result or the delegate call fails, say so and
+  stop for the user's decision. Never fall back to a Claude model, a native subagent, Workflow or a CLI.
+- A different model or effort applies only when the user names it for that task; find its provider in the
+  capabilities result and set the same three `target` fields.
 - Set `role` to match the work: `implementation`, `research`, `review`, `design` or `test`.
 
 ## 4. Worktrees and branches
@@ -95,27 +98,17 @@ touch the same files at once.
 ## 5. Briefs
 
 Use `../coordinator/session-brief-template.md`. A child sees nothing of this conversation, so each brief
-stands alone, names the worktree path, branch and base (section 4), restates the hard limits (no commit or
-push, no shared or production database writes, no migration or data scripts on staging or production, no
-pipeline or deploy triggers, leave changes in the working tree, plus any hold the user has set on that
-area) and asks for the branch, head SHA, files changed, commands run with results, what was not done, and
-open questions. Long output (findings, investigation results) goes to a file the brief names; the child's
-report gives the path.
+stands alone, names the worktree path, branch and base (section 4), and restates the workspace's
+permission rules and any hold the user has set on that area.
 
 Delegated children never watch pull requests, and a child that works on a PR ends with one line:
 `PR <full URL>, head <SHA>, checks and reviews <state>`.
 
 ## 6. Verify and report
 
-Verify as in `/coordinator` section 10: the diff, the branch and head SHA against the report, the quoted
-test output (rerun the narrow check if cheap), and the PR state and checks. Report as in `/coordinator`
-section 9: grouped as done, in progress, blocked and waiting on you, with a recommendation on each decision
-(a numbered set is fine when the decisions belong to one plan). When the user says "merged", confirm the
-PR's state before starting the dependent step. Offer progress-page updates and republish only on a yes.
-When work has landed, offer to cancel or archive the children you started, never the user's own threads.
+Verify as in `/coordinator` section 10 and report as in section 9. When work has landed, offer to cancel
+or archive the children you started, never the user's own threads.
 
-Commit, push, merge, branch deletion, worktree removal, archiving and posting to tickets or Slack happen
-only when the user asks, each time. Children never commit or push: after the user approves in chat, check
-the diff and do it yourself in the child's worktree. If a child is waiting on an approval, tell the user
-which child and what it asks, with its link, rather than passing an approval on. Confirm every destructive
-or production action first, even when a child asks for it.
+Permissions follow the workspace's rules and `/coordinator` section 11: a step that needs asking is done
+by you after the user approves it, never by passing the approval to a child, and a child waiting on an
+approval is shown to the user with its link.
