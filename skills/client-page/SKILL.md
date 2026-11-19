@@ -260,6 +260,15 @@ Only the page's creator adds files. Visitors can never upload anything.
      Do not assume the source host uses the same database contract.
   5. Publish with `scripts/client-page.sh publish`; it uploads referenced local assets.
 
+  In Claude, the source is usually a claude.ai artifact:
+  1. List its files with the Artifact tool (`action: "list"`, `scope: "files"`).
+  2. Download them with `action: "read"` and `paths`, into the temporary directory, keeping their
+     relative paths.
+  3. The saved page starts with the artifact's own wrapper (`<!doctype html>…<body>` on line 1) and
+     ends with `</body></html>`. Drop both, so the page is a fragment again.
+  4. Replace `claude.use("db")` with `cfdocs.db`.
+  5. Publish. The files upload six at a time, so 60 screenshots take about 20 seconds.
+
 ## Owner dashboard
 
 `https://<site>/admin` lists every page:
@@ -375,6 +384,8 @@ window.addEventListener("cfdocs:updated", e => …);  // a newer version was pub
   - Adapt its database calls to `cfdocs.db`; verify supported methods and data shapes.
   - Remove source-host identity capabilities and any names, ids or `by` fields that identify visitors.
   - Use `cfdocs.canWrite` for write permissions and remove dependencies on the source host's permission API.
+  - From a claude.ai artifact: replace `await claude.use("db")` with `cfdocs.db` (the method names
+    match), drop the `user` capability, and use `cfdocs.canWrite` instead of `can("data.write")`.
 
 ## Changing the Worker
 

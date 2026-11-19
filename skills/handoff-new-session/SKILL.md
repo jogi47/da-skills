@@ -51,6 +51,13 @@ handoff file as the initial prompt. Include the absolute handoff path and tell t
 read repository guidance and referenced plans before editing. Leave model, effort and permissions
 unset to inherit defaults unless the user requested otherwise.
 
+Host notes with exact tool names and fields, where this skill runs in one of these hosts:
+
+- Claude desktop app (Code tab): [references/claude-code.md](references/claude-code.md).
+- T3 Code, any provider: [references/t3-code.md](references/t3-code.md).
+
+The rules in this file take precedence over a host note where they differ.
+
 Read the available tool schemas before launching. Select the project directory and workspace
 strategy according to the user's choice and the host's supported capabilities. If the new session
 starts nested, use an available detach operation and verify that it becomes top-level. Report a

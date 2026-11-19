@@ -1,0 +1,6 @@
+interface:
+  display_name: "Handoff to New Session"
+  short_description: "Save context and continue in a fresh session"
+  default_prompt: "Use $handoff-new-session to continue this work in a fresh top-level session."
+policy:
+  allow_implicit_invocation: false

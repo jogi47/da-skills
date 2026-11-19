@@ -17,9 +17,9 @@ See [tests.md](tests.md) for examples and [mocking.md](mocking.md) for mocking g
 
 ## Anti-Pattern: Horizontal Slices
 
-**DO NOT write all tests first, then all implementation.** This is "horizontal slicing" - treating RED as "write all tests" and GREEN as "write all code."
+Write one test at a time, not all tests first and then all implementation. That is "horizontal slicing" - treating RED as "write all tests" and GREEN as "write all code."
 
-This produces **crap tests**:
+Batched tests are weak tests:
 
 - Tests written in bulk test _imagined_ behavior, not _actual_ behavior
 - You end up testing the _shape_ of things (data structures, function signatures) rather than user-facing behavior
