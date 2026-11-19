@@ -20,6 +20,67 @@ taskboard with the item open: `https://dev.azure.com/Tappable/Clubmatch/_sprints
 Read each item's `System.IterationPath` first; never guess the sprint. An item at the root iteration
 `Clubmatch` has no sprint page, so use `https://dev.azure.com/Tappable/Clubmatch/_workitems/edit/<id>`.
 
+## Reading
+
+Run every command below with `--org https://dev.azure.com/Tappable`, outside the Claude sandbox.
+
+Current sprint, then chosen fields of its items (add `AND [System.AssignedTo] = @Me` for your own):
+
+```sh
+az boards iteration team list --org https://dev.azure.com/Tappable --project Clubmatch \
+  --team "Clubmatch Team" --timeframe current --query '[].{name:name,path:path}' -o json
+
+az boards query --org https://dev.azure.com/Tappable --project Clubmatch --wiql \
+  "SELECT [System.Id], [System.Title], [System.State] FROM WorkItems
+   WHERE [System.IterationPath] = 'Clubmatch\\V2.3' ORDER BY [System.Id]" \
+  --query '[].{id:id, title:fields."System.Title", state:fields."System.State"}' -o json
+```
+
+To read type, state, sprint and assignee for a set of ids, select `[System.WorkItemType]`,
+`[System.State]`, `[System.IterationPath]` and `[System.AssignedTo]` and filter with
+`[System.Id] IN (<ids>)`. One ticket in full, with its parent, children and attachments:
+
+```sh
+az boards work-item show --org https://dev.azure.com/Tappable --id <id> --expand relations -o json
+# relations: Hierarchy-Reverse = parent, Hierarchy-Forward = children, AttachedFile = attachments
+```
+
+Its comments (HTML in `text`; check `totalCount` too):
+
+```sh
+az devops invoke --org https://dev.azure.com/Tappable --area wit --resource comments \
+  --route-parameters project=Clubmatch workItemId=<id> --api-version 7.1-preview -o json
+```
+
+Pull requests are on GitHub: `gh pr view <number> -R Clubmatch-LTD/<repo> --json state,baseRefName,mergedAt`.
+
+## Attachments in a ticket
+
+Screenshots are `AttachedFile` relations (the file name is `attributes.name`, the id is the last part
+of the relation `url`), and may also be inline `<img src=".../_apis/wit/attachments/<guid>...">` tags
+in a description or comment. Before summarising a ticket, check both. Download each into its own new
+folder under the workspace's gitignored `tmp/scratch/` and look at it with the Read tool:
+
+```sh
+az devops invoke --org https://dev.azure.com/Tappable --area wit --resource attachments \
+  --route-parameters project=Clubmatch id=<guid> --query-parameters download=true \
+  --api-version 7.1 --accept-media-type application/octet-stream --out-file tmp/scratch/att-<id>/<guid>.png
+```
+
+Download was checked on Clubmatch on 19 Nov 2026. Uploading an image was not tried; do not promise a
+screenshot on a comment. Screenshots may show member data: keep them in `tmp/scratch/`, never in a
+repo, a plan or a page, and delete them when done.
+
+## Posting a comment, only when asked
+
+Only for a question, in the tone `SKILL.md` describes, after you have shown the exact text for that
+ticket and the user has said yes (the workspace rules list posting a comment as ask-every-time).
+Write `{"text": "<html>"}` to a scratch file and post it with the same command as Inspection Worx,
+`--http-method POST --in-file <file>`, `--route-parameters project=Clubmatch workItemId=<id>` and
+`--api-version 7.1-preview`, then read the comments back. This command is checked on Inspection
+Worx; it has not been run on Clubmatch yet, so read back every time. The body is HTML: escape `<`
+and `>` in the text.
+
 ## Gotchas
 
 - `az devops invoke --resource workitems` crashes. Use `az boards query` and `az boards work-item show`.
