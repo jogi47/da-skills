@@ -198,6 +198,12 @@ or a PR. Until that review is back and its needed fixes have landed, report the 
 review", never "done" or "checked". Say which parts you checked yourself and which are still the child's
 claim.
 
+**Fix and review loops run as `/coordinator` section 6 says:** a report-only runtime test child of the
+first fix round before any static re-review; re-reviews by a fresh Terra child that reads only the
+commits since the last reviewed SHA, with one final whole-branch review before the PR; and fix rounds
+that run targeted tests and cmx, with the full suite and `verify` (or `flutter analyze` and the full
+`flutter test`) once, on the last round before the PR.
+
 When the user hands you the PR step (`/coordinator` section 9), open the PR yourself, then link it and,
 while it waits on checks or reviews you are tracking, watch it (section 1). Unwatch it once that wait is
 over or before you hand the work back.

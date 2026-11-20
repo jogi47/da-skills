@@ -126,6 +126,18 @@ You will be compacted; keep what matters where it survives.
 - One read-only review session per area of the actual diff (backend, web, app, end to end).
 - Tell the user, when starting reviewers, their scope (the full PR diff or named commits) and method
   (static read of a git ref, or running the app).
+- **Runtime test before static re-reviews.** When a change can be run (an API route, a portal page, an
+  app screen), start a report-only runtime test of the first fix round before any static re-review,
+  and feed its failures into the next fix round together with the review findings. On 19 Nov 2026 an
+  emulator run found a push-permission bug that three static reviews had passed; testing first would
+  have saved two fix-and-review rounds.
+- **Re-reviews read the delta.** The first review of a branch reads the whole diff. From the second
+  round on, a fresh reviewer reads only the commits added since the last reviewed SHA (plus the files
+  they touch, for context) and checks the previous round's findings. One final whole-branch review runs
+  before the PR, or after merging the base branch in.
+- **Fix rounds run targeted checks.** Brief a fix round to run the tests and cmx calls for what it
+  changed, red first, and to run the full suite and `verify` (or `flutter analyze` and the full
+  `flutter test`) once, on the last round before the PR, not on every round.
 - **Review before merge.** Start the review when the work is pushed or the PR opens, and never call a
   PR ready to merge until its review is back and the fixes it needs have landed. If the user merges
   early, say so once, run the review anyway, and send any findings to a fix round on a new branch.
