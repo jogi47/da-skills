@@ -1,5 +1,6 @@
 ---
 name: defuddle
+disable-model-invocation: true
 description: Extract clean markdown content from web pages using Defuddle CLI, removing clutter and navigation to save tokens. Use instead of raw page fetching when the user provides a URL to read or analyze, for online documentation, articles, blog posts, or any standard web page.
 ---
 

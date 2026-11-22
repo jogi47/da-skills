@@ -1,5 +1,6 @@
 ---
 name: client-page
+disable-model-invocation: true
 description: Publish a shareable Cloudflare page with anonymous saved answers, so people can respond without access to the creator's agent. Supports free pages, creator-uploaded media and an optional owner dashboard. Works with custom domains or workers.dev addresses and supports setup, publishing, updates, locking, archiving and reading answers. Use for public approval sheets, checklists, questionnaires, reports and trackers. Check for an existing site before setup and preserve its address, pages and saved answers.
 ---
 

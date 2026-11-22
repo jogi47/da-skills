@@ -21,6 +21,13 @@ Recently added reusable workflows:
 - [coordinator-t3](skills/coordinator-t3/SKILL.md): T3 Code only. Same role as `coordinator`, but it delegates through T3's `delegate_task` family instead of the Claude desktop session tools, runs every child on Codex `gpt-6.1-terra`, and creates product-repo worktrees by hand. Has its own brief template written for Codex children, but reuses the `coordinator` skill's rules, so install both. Manual use through `/coordinator-t3`.
 - [handoff](skills/handoff/SKILL.md): write a self-contained handoff to a file and stop; starts no session. Manual use through `/handoff`.
 - [tdd](skills/tdd/SKILL.md): red-green-refactor test-driven development. From [mattpocock/skills](https://github.com/mattpocock/skills), MIT licence kept in the skill folder.
+- Skills from [cursor/plugins pstack](https://github.com/cursor/plugins/tree/main/pstack/skills), MIT licence kept in each skill folder. All are manual, slash-command only. `correct` and `reflect` are adapted (no commits unless asked; real skill paths instead of Cursor paths); `create-formal-verification-skill` has an added note on where files go.
+  - [correct](skills/correct/SKILL.md): turn a repeated agent mistake into a structural guard (architecture, types, lint, test) instead of another rule.
+  - [reflect](skills/reflect/SKILL.md): mine a session for lasting lessons and propose edits to the skills it used.
+  - [principle-prove-it-works](skills/principle-prove-it-works/SKILL.md): check the real artifact before saying done.
+  - [principle-fix-root-causes](skills/principle-fix-root-causes/SKILL.md): trace a symptom to the first wrong state and fix it there.
+  - [principle-test-behavior-not-implementation](skills/principle-test-behavior-not-implementation/SKILL.md): assert what users of the code can observe.
+  - [create-formal-verification-skill](skills/create-formal-verification-skill/SKILL.md), [maintain-formal-verification-skill](skills/maintain-formal-verification-skill/SKILL.md) and [statechart](skills/statechart/SKILL.md): model-check concurrency and state rules with TLA+ and keep the model true to the code. `statechart` installs TLC with `mise` on first run (or set `TLA2TOOLS` and `JAVA`).
 
 ## Install
 

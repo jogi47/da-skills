@@ -1,5 +1,6 @@
 ---
 name: video-context-transcriber
+disable-model-invocation: true
 description: "Transcribe local video/audio files or sample silent video frames into LLM-ready context bundles. Use when the user provides a local media path and wants transcript context, timestamped caption frames, or visual frame context for videos with little/no audio. Self-contained: no separate local project required."
 ---
 

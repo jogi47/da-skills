@@ -1,5 +1,6 @@
 ---
 name: slack-digest
+disable-model-invocation: true
 description: Read and summarise a Slack channel's recent activity, including thread replies and attached screenshots, using the Slack Web API with an existing token. Use when the user names a Slack channel and asks what happened there, for a digest or catch-up, to trace a decision or a bug discussion, or to find who said what. Takes the channel as an argument.
 ---
 
