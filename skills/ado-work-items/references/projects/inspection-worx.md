@@ -12,7 +12,8 @@ same rules serve every workspace.
 | Org | `--org https://tappable.visualstudio.com` (pass it on every command) |
 | Project | `--project "Inspection Worx"` |
 | Team | `Inspection Worx Team` |
-| Ticket link | `https://tappable.visualstudio.com/Inspection%20Worx/_workitems/edit/<id>` |
+| Ticket link, in chat | the sprint taskboard with the item open: `https://tappable.visualstudio.com/Inspection%20Worx/_sprints/taskboard/Inspection%20Worx%20Team/Inspection%20Worx/<current sprint name, URL-encoded>?workitem=<id>`. Encode the brackets in the name as `%28` and `%29`, or the link breaks. Never a bare number. Get the name from the current-sprint command under Reading. A ticket outside the sprint still opens; the board behind it is the current one. |
+| Ticket link, on a page | `https://tappable.visualstudio.com/Inspection%20Worx/_workitems/edit/<id>`: progress pages and anything readers open outside the board |
 | Repos | `inspection-worx-be`, `inspection-worx-fe` (Azure DevOps, so `az repos pr` applies) |
 
 ## Gotchas
@@ -21,7 +22,12 @@ same rules serve every workspace.
   Veridate tenant, not the Tappable DevOps identity. Use `az boards`, `az repos` and `az devops invoke`.
 - The comments API version is `7.1-preview`; `7.1-preview.4` errors.
 - Tickets may be stale: some sprints use a scope document and design images as the work items, with
-  tickets only for reporting. Check memory for the current sprint's rules before planning from one.
+  tickets only for reporting. Check the sprint's own rules (the workspace doc named below, and the sprint's
+  progress page) before planning from one. A ticket's `Custom.ExpectedReleaseVersion` can change between
+  versions: read it before putting a ticket in a release section.
+- The Veridate workspace keeps its other ticket working agreements (sprint branches, proving a fix, the
+  progress page, the deploy update for QA) in `docs/readme-docs/veridate-ticket-workflow.md`. This profile
+  holds the ADO side; that doc holds the rest.
 - Ticket content is client data. Summarise it; do not paste whole descriptions into repos or plan docs.
   Drafts live in the workspace's gitignored `tmp/`.
 
