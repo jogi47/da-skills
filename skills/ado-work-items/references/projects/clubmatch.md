@@ -112,6 +112,14 @@ These are what existing V2.3 items carry; confirm against the ticket before writ
   it was tested goes on the progress page (`dev-progress-page` skill) and in the pull request.
 - **Never touch pipelines** from this skill.
 
+## Where the proof comes from
+
+What was tested, and how, is written on the progress page (`dev-progress-page`) and in the pull request, never in a ticket
+comment (see Rules). Its evidence comes from the Clubmatch verification skills: `verify-backend-e2e` for the API and
+`verify-product-e2e` for screens, whose per-sub-feature results map to the page's case statuses (`pass`, `partly`, `not`,
+`fail`). Ticket states and the Fix, Implement and QA tasks below are bookkeeping: an agent's own verification never replaces
+the QA task or a person's QA, and the page says "Not tested" for anything it did not drive.
+
 ## Marking finished work, only when asked
 
 "Update the tickets for <ids>" or "mark them for QA" is the ask for that set of tickets. "Status only"
