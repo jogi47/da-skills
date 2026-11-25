@@ -1,6 +1,6 @@
 ---
 name: maintain-verification-skill-advanced
-description: "Keep a project's layered verification suite true as the product changes: the tools (seed and backend CLI), the backend end-to-end skill, the external feature map, and the product end-to-end skill. Checks the suite's health, then upkeeps each layer in dependency order using the project's own procedures (the tool upkeep skill, the map's audit pass), proves changes with a live run, triages findings, and ships proven corrections. Use after the product, the tools or the map have changed, before a release, or when asked to audit the verification. Replaces maintain-verification-skill for projects that have a suite; create-verification-skill-advanced sets the suite up."
+description: "Keep a project's layered verification suite true as the product changes: the tools (seed and backend CLI), the backend end-to-end skill, the external feature map, and the product end-to-end skill. Checks the suite's health, then upkeeps each layer in dependency order using the project's own procedures (the tool upkeep skill, the map's audit pass), proves changes with a live run, re-tests the map's recorded Traps (and, only when asked with `fix`, fixes small low-risk product bugs on their own branch), triages findings, and ships proven corrections. Use after the product, the tools or the map have changed, before a release, or when asked to audit the verification. Replaces maintain-verification-skill for projects that have a suite; create-verification-skill-advanced sets the suite up."
 disable-model-invocation: true
 ---
 
@@ -145,7 +145,7 @@ product bug written by an earlier author is a claim until you reproduce it: say 
       fails for the reason the Trap describes;
    4. it touches no money, sign-in or permissions, deletion, or data shared across users or clubs;
    5. it changes no request or response shape that an installed client depends on (for example `/api/user/*`, where an old
-      app stays live), and no wording the product owner would decide;
+      app stays live), and no wording or rule that is an open question for the user;
    6. there is no product decision hidden in it (a rule that could reasonably go either way is a question, not a bug).
    One that fails any criterion is **reported, not fixed**, with the criterion it failed. One that passes goes through the
    project's own flow for that repo, as any implementation work: its plan doc first (in the repo's plan folder), a branch off
