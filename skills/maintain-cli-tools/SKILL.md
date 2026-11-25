@@ -24,6 +24,11 @@ Pick one, and say which:
 - **changed**: one reviewed change per tool ships proven additions and corrections.
 - **blocked**: measuring or proving could not finish, or a proven change could not ship safely. Say exactly what blocked it.
 
+Every tool ends with a coverage line saying what ran and what did not. They combine like this: additions you proved and
+shipped, with a source unmeasured, end `changed` (the coverage line names the source). Findings you could not ship, or
+partial coverage with nothing found, end `blocked`. Only complete coverage with no gaps left is `clean`. (This is the same
+rule `maintain-verification-skill-advanced` uses, so a pass called from it reports the same way.)
+
 ## Edit scope
 
 Edit only what the manifest lists for the tool: the tool's folder, its docs, and the skills attached to it, plus the
@@ -86,13 +91,17 @@ lacks one the pass needs, add it to the manifest after reading the tool's docs, 
      that asserts only a status code and nothing about the body or the database state is not finished;
    - a seed module is repeatable (a second run creates nothing), reversible where the tool offers undo, and a scenario,
      or a feature entry's click path, reaches the state it was added for;
-   - the full tool check runs once at the end of the pass, not after every item, in a **fresh** world: end every
+   - the full tool check runs once at the end of the pass, not after every item (when `maintain-verification-skill-advanced`
+     called this pass, its single full-gate report already serves the measuring in step 2, so run this final check only if
+     the pass changed something it reads), in a **fresh** world: end every
      exploring session with its cleanup and tear down the world you explored in, because rows left by abandoned
      exploration make unrelated scenarios fail.
    If the full check fails, do not guess whose fault it is. Run the same check on a **baseline** world (the same
    profile without your change) and compare the failure text. Only a difference is yours; record the rest as already
    failing, under left open, and do not fix it in this pass.
-6. **Keep the neighbours true.** Refresh the attached skills and the tool's docs where the change makes a statement
+6. **Keep the neighbours true.** (Drift in the attached skills that has nothing to do with the change you made is found by
+   `maintain-verification-skill-advanced`'s compare step; do not hunt for it here.) Refresh the attached skills and the
+   tool's docs where the change makes a statement
    stale (command tables, module and profile lists, what a profile is for). Avoid writing counts that will go stale; in
    a doc you touch, fix a stale figure or replace it with the command that produces it.
    Run the manifest's `closeout` commands, and fix what they report about seed or scenario names in the feature

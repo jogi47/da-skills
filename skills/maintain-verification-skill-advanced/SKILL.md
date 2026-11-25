@@ -32,7 +32,8 @@ the findings. Only a layer with no findings and complete coverage is `clean`.
 ## Edit scope
 
 The suite's own files only: the map folder, the suite's skills and their references, the tools' folders and docs
-(under `maintain-cli-tools` rules), and the manifest. Never product code. A behaviour the map describes that the product
+(under `maintain-cli-tools` rules), and the manifest. Never product code, except in the opt-in fix lane (step 6a), and
+only for a fix that meets every criterion there. A behaviour the map describes that the product
 no longer has is either doc drift (fix the map) or a product regression (report it; never hide it in the docs). A suspected
 product bug written by an earlier author is a claim until you reproduce it: say which of the two states it is in.
 
@@ -47,6 +48,8 @@ product bug written by an earlier author is a claim until you reproduce it: say 
    | `backend` | step 2 for the backend CLI tool (kind `verify`) and the seed tool it depends on, then step 3 |
    | `map` | step 4 |
    | `product` | step 5 (it needs step 4's live pass on at least one entry) |
+   | `traps` | step 4a only: the Trap sweep over the entries in scope, then step 6 |
+   | `fix` | a modifier, off unless the user types it (`traps fix`, `map fix`): turns on the fix lane in step 6a for broken Traps that qualify |
 
    Step 1 always runs for the whole suite, whatever the argument. A layer argument limits what you fix, not what you read:
    if a failure traces to another layer, report it and either widen the scope or hand it on, never patch around it.
@@ -87,7 +90,8 @@ product bug written by an earlier author is a claim until you reproduce it: say 
      again at the end only if the pass changed something it reads. When it fails, compare with the known-failing set the
      manifest's `conventions` or the last pass recorded; bring up a baseline world (the same profile without your change)
      only when a failure is outside that set. Only a difference is yours.
-   - **Compare.** Check `verify-backend-e2e` against the CLI's current docs and code: command names, flags, profile names,
+   - **Compare.** (When a tool change made in step 2 is the cause, `maintain-cli-tools` step 6 has already refreshed the
+     skill; compare finds drift from any other cause.) Check `verify-backend-e2e` against the CLI's current docs and code: command names, flags, profile names,
      the world steps, the invocation form, and that it names every command this pass needs (doctor, a single-scenario
      replay with cleanup); a missing one is drift in the skill, to fix from the tool's docs.
    - **Exercise** (one real check, to prove the skill's own steps work). Choose the check: with a diff in question, a kept
@@ -105,6 +109,16 @@ product bug written by an earlier author is a claim until you reproduce it: say 
    second run), an optional source wave of read-only agents (one per entry, citing file and line, never driving a browser or
    editing), then the live pass. Order by risk: money, sign-in, deletion, shared data first. Mark a step "(seen)" with the
    date only after you drove it; move an entry's `verified` date only when every sub-feature got a live pass.
+   **4a. Trap sweep.** For each entry in scope, take every Trap that says "found broken on <date>", records an unreachable
+   prerequisite, or carries a claim a person wrote from reading code ("appears to", "not diagnosed"). Re-test it on the
+   isolated session against the code as it is now, by the cheapest route that shows it (the API call or the screen the Trap
+   names). Mark each one in the entry, with today's date:
+   - **still broken**: keep the Trap, add the fresh evidence (what you did, what you saw) and the commit it was seen on;
+   - **fixed**: the behaviour now works; remove the Trap, correct the entry's steps and rules, and note the fix's commit if
+     `git log` shows it;
+   - **cannot reproduce**: say what you tried; keep the Trap marked unconfirmed, never delete it;
+   - **now unreachable**: record the prerequisite you lacked.
+   A Trap that is only a caution (a quirk, a limit) is not re-tested unless its text names a check; read it and move on.
 5. **Product skill.** The live pass of step 4 is its exercise: launch, login, drive, evidence and clean-up are used on
    every entry. A failure in launch, login or driving that is not the product's fault is drift in `verify-product-e2e` (or
    its references): fix it, re-drive the step, and carry on. A surface the harness cannot reach (no in-app browser, no
@@ -119,9 +133,27 @@ product bug written by an earlier author is a claim until you reproduce it: say 
    - an entry or skill that is wrong or thin: doc drift, fix it;
    - a behaviour a skill cannot drive: a tooling gap, fix the skill or tool and re-drive it;
    - a behaviour that is actually broken: a product gap, report it and record it in the entry's Traps as "found broken on
-     <date>", never as intended behaviour;
+     <date>", never as intended behaviour (with `fix` typed, see step 6a);
    - a sub-feature that cannot be reached: record the prerequisite and the route tried; if the entry never named it, that is
      drift too.
+
+   **6a. Fix lane (only when the user typed `fix`).** A product gap that is still broken after the sweep may be fixed only if
+   **every** one of these holds, each checked and written down:
+   1. the cause is established (you read the code path and reproduced it), not guessed;
+   2. the fix is in one file or one small area, about 20 lines, with no migration and no new dependency;
+   3. a failing test can be written first at a layer the project's rules name (a unit test, a kept scenario), and it
+      fails for the reason the Trap describes;
+   4. it touches no money, sign-in or permissions, deletion, or data shared across users or clubs;
+   5. it changes no request or response shape that an installed client depends on (for example `/api/user/*`, where an old
+      app stays live), and no wording the product owner would decide;
+   6. there is no product decision hidden in it (a rule that could reasonably go either way is a question, not a bug).
+   One that fails any criterion is **reported, not fixed**, with the criterion it failed. One that passes goes through the
+   project's own flow for that repo, as any implementation work: its plan doc first (in the repo's plan folder), a branch off
+   the repo's base with the project's no-tracking rule, the failing test, the fix, the layer's proof plus the Trap's own
+   steps re-run on the isolated session, then commit and push the branch under the project's rules. Opening a pull request
+   needs the user's go-ahead; never merge. One branch per repository, a small batch (three fixes at most per pass), and
+   the entry's Trap is updated to "fixed on branch <name>, pending merge" only after the proof, then confirmed fixed by the
+   next sweep once the branch has merged. Stop the lane at the first fix that does not prove cleanly and report it.
 7. **Ship or stop.** For `changed`: follow the manifest's `ship` rules, one reviewed change per repository, every changed
    file re-read first; changes to workspace files (the map, the suite skills, the manifest) stay uncommitted for the user
    unless the project says otherwise. Run the map's closeout and check last. Final teardown comes after the last drive,
@@ -130,7 +162,9 @@ product bug written by an earlier author is a claim until you reproduce it: say 
 ## Report
 
 Per layer: the outcome, the coverage line, what changed, what was left. For the map: entries fully verified, steps seen
-out of total per entry, steps unreachable and why, product gaps found, scenarios skipped. Name worlds and sessions you left
+out of total per entry, steps unreachable and why, product gaps found, scenarios skipped. For the Trap sweep: each Trap
+re-tested with its new state (still broken, fixed, cannot reproduce, now unreachable). For the fix lane: each fix attempted
+(branch, test, proof) and each broken Trap not fixed, with the criterion it failed. Name worlds and sessions you left
 running (none, ideally) and what you added to any local database. Keep short run notes (layers covered, drift confirmed,
 unreachable prerequisites) in one scratch location, the session's scratchpad or the project's gitignored scratch folder,
 never the operating system's temp folder (it differs between sandboxed and unsandboxed commands); do not commit them.
@@ -144,4 +178,6 @@ never the operating system's temp folder (it differs between sandboxed and unsan
 - Never weaken a step or an assertion to make it pass. A seed state the seed lacks fails the step; record why.
 - Check what an earlier author or a subagent wrote against the screen or the code: labels, environment facts and "this is
   broken" claims are all checked before they are kept.
+- Without the `fix` argument, never edit product code. With it, only a fix that passed every criterion in step 6a, in its
+  own branch and plan, and never a fix on a sign-in, money, permissions or deletion path.
 - Stop what you started, and say what you left behind.
