@@ -11,7 +11,7 @@ from pathlib import Path
 
 REQUIRED_TOOL = ["id", "kind", "repo", "path", "docs", "attached_skills", "run_from", "health", "protected",
                  "risk_hints", "inventory", "gap_report", "conventions", "proof", "closeout", "ship"]
-KINDS = {"seed", "verify"}
+KINDS = {"seed", "verify", "runner"}
 NEEDS = {"none", "db", "api", "docker"}
 PAIR_LISTS = {"inventory": "command", "gap_report": "command", "proof": "command", "gap_sources": "where"}
 

@@ -41,7 +41,7 @@ Names the verification suite the tools belong to. `create-verification-skill-adv
 | Field | Meaning |
 |---|---|
 | `id` | `seed`, `verify`, or another short id; what a request names |
-| `kind` | `seed` or `verify`; selects the measuring hints in the skill |
+| `kind` | `seed`, `verify` or `runner` (the session launcher, such as agent-test); selects the measuring hints in the skill |
 | `repo` | the product repo that owns it; its rule file governs |
 | `path` | the tool's folder |
 | `docs` | docs that describe the tool; read in step 1, refreshed in step 6 |

@@ -62,6 +62,13 @@ lacks one the pass needs, add it to the manifest after reading the tool's docs, 
    result to a scratch queue, one row per gap: what, where it was found, risk, size. Typical sources:
    - Seed tool: modules and profiles; states or logins the feature map or its entries say are "not seeded" or
      "unreachable: needs ..."; scenarios skipped because they need seeded data; fixtures a check had to build by hand.
+   - Runner tool (the session launcher, such as agent-test; one repo shared by several projects): the project's
+     integration config against its repos, launch config and scripts (a target, process, port, container dependency or
+     environment key that moved, appeared or vanished); each target group's plan command; the allow-list of settings against the
+     application's env example; the project's scenarios folder against the features that changed; and every list that names
+     the supported projects (the launcher's rule file, its README, the session skill's description). The launcher's own
+     code is shared by all projects: a bug in it is reported, never fixed in this pass, and the edit scope is the project's
+     integration folder (config, helper scripts, README), its scenarios, tests for that integration, and docs.
    - Verification tool: routes no scenario reaches (the route ledger); scenarios skipped, and why; scenarios that
      name a route the contract no longer has; the "not covered" lines in the feature entries; what a recent diff can
      touch (the tool's impact command).

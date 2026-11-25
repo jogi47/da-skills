@@ -54,6 +54,15 @@ and `tools/seed` and `iwx-seed` (seed) already do, and the contract `maintain-cl
 - **Contract and authorisation checks.** A route added, removed or reshaped fails until reviewed and updated; a new route
   needs a hand-written authorisation row, never one derived from its own guard.
 
+## The runner tool (the session launcher)
+
+One repo shared by several projects, with one folder per project (config, runtime setup, a guard that refuses unsafe
+settings, a login adapter, a seed hook that runs the application's own seed tool, a README, tests, scenarios). It is added
+to a project's manifest as kind `runner`, whose commands are its target and plan commands (no database needed), its tests,
+and starting and stopping a real session (a container runtime). Adding a project is a guide in the launcher's own repo
+(`docs/guides/add-a-project.md` in agent-test). Upkeep covers the project's folder only: the launcher's code is shared,
+changes through its own plan, and is reported, not edited, by a maintenance pass.
+
 ## The contract the upkeep skills rely on
 
 `maintain-cli-tools` reads a manifest (`references/manifest.md`). For each tool it needs, as one-line commands with a `needs`
