@@ -57,5 +57,6 @@ section is the source when it exists, and detection is the fallback.
 
 ## What this skill never creates
 
-A seed CLI, a backend CLI, the feature-map generator and its extractors, a launch config for a stack the project does
+(For a missing tool, the project's plan can start from the checklist in `maintain-cli-tools`'s
+`references/tool-blueprint.md`.) A seed CLI, a backend CLI, the feature-map generator and its extractors, a launch config for a stack the project does
 not run. Each is a prerequisite; the project's plan-first workflow builds it.

@@ -42,7 +42,8 @@ parameter), and put the product question in the report for the user.
 ## The manifest
 
 The project says what its tools are in `cli-tools.json` (the project's workspace holds it, normally `.claude/cli-tools.json`).
-Field meanings and a short example: [references/manifest.md](references/manifest.md). Check it with
+Field meanings and a short example: [references/manifest.md](references/manifest.md). What a seed or verification tool
+must offer to be maintainable by this skill (and the checklist for planning a new one): [references/tool-blueprint.md](references/tool-blueprint.md). Check it with
 `scripts/check-manifest.py <path>` before relying on it: it confirms the shape, that the paths exist and that every
 command is named, but not that a command runs; the `health` command shows that. Each command says what it `needs`
 (`none`, `db`, `api` or `docker`), so a pass knows what it can run now. The skill never invents a command: if the manifest
