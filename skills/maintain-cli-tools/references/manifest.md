@@ -32,8 +32,8 @@ Names the verification suite the tools belong to. `create-verification-skill-adv
 | `suite.feature_map.closeout` | the command that lists what a change leaves to update |
 | `suite.feature_map.tests` | the command that runs the map script's own tests |
 | `suite.feature_map.audit_procedure` | the file that describes the map's audit pass |
-| `suite.skills.seed`, `.backend`, `.product` | the seed, backend and product verification skills |
-| `suite.launch` | the launch config the product skill starts servers from |
+| `suite.skills.seed`, `.backend`, `.run`, `.product` | the seed skill, the backend verification skill, the run decision skill (`local-run`: which stack a check runs on, the standing run, the standing data's rules) and the product verification skill |
+| `suite.launch` | the launch config the run skill starts the standing servers from |
 | `suite.surfaces` | plain names, as people say them, of what the product skill covers, for reports (for example portal, admin console, website, app; add API only if the skill drives it as a surface) |
 
 ## A tool

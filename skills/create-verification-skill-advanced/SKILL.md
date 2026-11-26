@@ -1,6 +1,6 @@
 ---
 name: create-verification-skill-advanced
-description: "Set up or complete a project's layered verification suite: the feature map (kept outside any skill), the seed tool's skill, the backend end-to-end skill that drives the backend CLI, and the product end-to-end skill that drives the running screens from the map. Finds what already exists, creates only the missing layers in dependency order, grounds each one in the project's real tools, proves each by running it once, and registers the suite in the project's manifest. Use when a project has, or needs, separate backend and product verification skills with an external feature map, instead of one verify-<app> skill. Replaces create-verification-skill for such projects."
+description: "Set up or complete a project's layered verification suite: the feature map (kept outside any skill), the seed tool's skill, the backend end-to-end skill that drives the backend CLI, the run decision skill (local-run) that picks and starts the stack, and the product end-to-end skill that drives the running screens from the map. Finds what already exists, creates only the missing layers in dependency order, grounds each one in the project's real tools, proves each by running it once, and registers the suite in the project's manifest. Use when a project has, or needs, separate backend and product verification skills with an external feature map, instead of one verify-<app> skill. Replaces create-verification-skill for such projects."
 disable-model-invocation: true
 ---
 
@@ -24,7 +24,8 @@ a project that has a suite. The sibling skill `maintain-cli-tools` (in the same 
 | Feature map | `docs/feature-map/` (index, one entry per feature, generated inventory) and a `feature-map` skill with a check script | the project's code, to extract routes and screens |
 | Seed | a seed tool and the `seed-test-data` skill | the tool |
 | Backend verification | a backend CLI (like `cmx` or `iwx`) and the `verify-backend-e2e` skill | the CLI, the seed tool, the map |
-| Product verification | the `verify-product-e2e` skill, with a reference per family of surfaces | a launch config, the map, the backend skill |
+| Run decision | the `local-run` skill: which stack a check runs on (standing run, session, world), starting the standing run, the standing data's rules | a launch config, the seed skill, the backend skill |
+| Product verification | the `verify-product-e2e` skill, with a reference per family of surfaces | the map, the backend skill, the run skill |
 | Upkeep | `cli-tools.json`, naming the tools, their attached skills and the suite | all of the above |
 
 Detection rules, what "exists" means for each layer, and what this skill cannot create: [references/layers.md](references/layers.md).
@@ -75,8 +76,10 @@ the way to build it.
      map's entries (front matter included) and its checker's strings, the audit procedure, the project's rule file and docs
      index, the seed skill. Note every heading, file and clause they cite. The new skill must supply each one, under the
      exact name cited, and cover every case the citing text mentions (for example running without a server runner).
-3. **Decide the create list.** Only missing layers, in dependency order: tools, seed skill, backend skill, feature map,
-   product skill. A layer whose prerequisite is missing is blocked, not improvised.
+3. **Decide the create list.** Only missing layers, in dependency order: tools, seed skill, backend skill, run skill,
+   feature map, product skill. Where the run skill is missing but other suite skills choose a stack or state standing-data
+   rules themselves, the new run skill takes those rules from them (reconciled, the stricter winning); trimming the old
+   copies out of the existing skills is `maintain-verification-skill-advanced`'s job, so list each one in the report. A layer whose prerequisite is missing is blocked, not improvised.
 4. **Create each missing layer.** Read the tool's docs and the project's helper docs first, then author from the outline in
    `references/skill-outlines.md`. A finished skill of the same layer in another project's workspace is the best model for
    its shape: read it if there is one (copy the shape, never the project's facts); with none, the outline and the docs are
@@ -88,11 +91,14 @@ the way to build it.
    extractors are project-specific), so record it as a prerequisite and do not build one in this pass.
 5. **Register.** Write or update the manifest: the tools (so `maintain-cli-tools` can run) and the `suite` section naming
    the map, the skills and the launch config. The fields are in `maintain-cli-tools`'s `references/manifest.md` and the
-   checker enforces them (`suite.feature_map` needs `check`, `closeout`, `tests` and `audit_procedure`; `suite.surfaces` is
-   a list of plain names). The product skill goes in `suite.skills` only: it documents the whole product, not one tool, and a tool's
+   checker enforces them (`suite.feature_map` needs `check`, `closeout`, `tests` and `audit_procedure`; `suite.skills`
+   needs `seed`, `backend`, `run` and `product`; `suite.surfaces` is a list of plain names). A project that uses a session
+   runner (agent-test) lists it as a tool of kind `runner`. The run and product skills go in `suite.skills` only: it documents the whole product, not one tool, and a tool's
    `attached_skills` lists only skills that document that tool. Run `check-manifest.py` on the result.
 6. **Prove each created layer by running it once.** Backend skill: bring up a throwaway world, replay one kept scenario,
-   take the world down. Seed skill: the profile plan, then a dry run. Product skill: one mapped sub-feature through its own
+   take the world down. Seed skill: the profile plan, then a dry run. Run skill: the status helper, then pick a row of its
+   table for a real check, start only what that row needs and stop what you started (offline: every launch-config entry,
+   port and helper it names exists). Product skill: one mapped sub-feature through its own
    route, ending verified, unreachable or failed with evidence. Feature map: the check script passes. Name where the
    evidence lives (the project's scratch folder, per its rules) and confirm it is still there after cleanup. Fix what fails
    and clean up after every failed try.
@@ -110,6 +116,8 @@ the way to build it.
 ## Hard rules
 
 - One feature map, outside every skill. Never create a second map or a `features/` folder inside a verify skill.
+- One run decision, in `local-run`. No other skill you write chooses a stack, starts servers its own way or states the
+  standing data's rules; it points at `local-run` by section.
 - Never overwrite an existing layer, and never delete a leftover without asking.
 - Writes in proofs go to a throwaway world or a local database the project names as free to use, never a shared
   environment and never anything in the manifest's `protected` list.

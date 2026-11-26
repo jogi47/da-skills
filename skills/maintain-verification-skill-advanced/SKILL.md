@@ -1,6 +1,6 @@
 ---
 name: maintain-verification-skill-advanced
-description: "Keep a project's layered verification suite true as the product changes: the tools (seed and backend CLI), the backend end-to-end skill, the external feature map, and the product end-to-end skill. Checks the suite's health, then upkeeps each layer in dependency order using the project's own procedures (the tool upkeep skill, the map's audit pass), proves changes with a live run, re-tests the map's recorded Traps (and, only when asked with `fix`, fixes small low-risk product bugs on their own branch), triages findings, and ships proven corrections. Use after the product, the tools or the map have changed, before a release, or when asked to audit the verification. Replaces maintain-verification-skill for projects that have a suite; create-verification-skill-advanced sets the suite up."
+description: "Keep a project's layered verification suite true as the product changes: the tools (seed and backend CLI), the backend end-to-end skill, the run decision skill (local-run), the external feature map, and the product end-to-end skill. Checks the suite's health, then upkeeps each layer in dependency order using the project's own procedures (the tool upkeep skill, the map's audit pass), proves changes with a live run, re-tests the map's recorded Traps (and, only when asked with `fix`, fixes small low-risk product bugs on their own branch), triages findings, and ships proven corrections. Use after the product, the tools or the map have changed, before a release, or when asked to audit the verification. Replaces maintain-verification-skill for projects that have a suite; create-verification-skill-advanced sets the suite up."
 disable-model-invocation: true
 ---
 
@@ -8,12 +8,14 @@ disable-model-invocation: true
 
 A suite goes stale in layers. A route or screen changes and the feature map entry is wrong; a seed module or scenario is
 added and an entry names the old one; the backend CLI changes and its skill describes the old command; a launch step moves
-and the product skill fails on the first screen. This pass walks the layers in dependency order, uses each layer's own
+and the run skill starts a server that no longer exists, or the product skill fails on the first screen. This pass walks the layers in dependency order, uses each layer's own
 procedure, and proves what it changes by running it.
 
 It does not repeat what other skills already say. The tool layer is `maintain-cli-tools` (a sibling skill in the same
 skills folder: `~/.claude/skills` or `~/.agents/skills`; its helper is `maintain-cli-tools/scripts/check-manifest.py`). The
-map layer is the project's own audit pass (`suite.feature_map.audit_procedure`). This skill is the conductor: what to run,
+map layer is the project's own audit pass (`suite.feature_map.audit_procedure`). Which stack a check runs on, how the
+standing servers start and what the standing data allows are the run skill's (`suite.skills.run`, usually `local-run`):
+this pass follows it and never decides those itself. This skill is the conductor: what to run,
 in what order, how to triage, and what to ship.
 
 ## Outcomes
@@ -40,12 +42,15 @@ product bug written by an earlier author is a claim until you reproduce it: say 
 ## Pass
 
 0. **Locate.** Find `.claude/cli-tools.json` and read its `suite` section. No manifest or no suite: stop and point at
-   `create-verification-skill-advanced`. An argument limits the pass to layers; with none, run all in order.
+   `create-verification-skill-advanced`. A suite with no `suite.skills.run`, or one that names a skill that does not
+   exist, is a missing layer: point at the create skill for it and carry on with the rest, starting stacks only as the
+   project's rule files allow. An argument limits the pass to layers; with none, run all in order.
 
    | Argument | Runs |
    |---|---|
    | `tools` | step 2 for every tool; a tool id (`seed`, `verify`) for one |
    | `backend` | step 2 for the backend CLI tool (kind `verify`) and the seed tool it depends on, then step 3 |
+   | `run` | step 3a |
    | `map` | step 4 |
    | `product` | step 5 (it needs step 4's live pass on at least one entry) |
    | `traps` | step 4a only: the Trap sweep over the entries in scope, then step 6 |
@@ -70,7 +75,9 @@ product bug written by an earlier author is a claim until you reproduce it: say 
      exists and that every flag the skill cites appears in the tool's docs or its code (when the tool has no per-command
      help, the docs and the argument parser are the source; note where `--help` and the docs disagree). A tool may be run
      through a wrapper (`npm run -s cmx --`); the skill must say so once.
-   - Look for conflicts: a `verify-<app>` skill, a `features/` folder inside a verify skill, two skills claiming one surface.
+   - Look for conflicts: a `verify-<app>` skill, a `features/` folder inside a verify skill, two skills claiming one surface,
+     and any suite skill (or map reference) that chooses its own stack, starts servers its own way or restates the
+     standing data's rules instead of pointing at the run skill: a second copy that drifts. Trim it to a pointer.
    - List what is wrong, with its layer. Fix errors that block the pass first. Warnings (never verified, old, pointing at
      changed files) name the entries most likely to have drifted; when many read alike, rank the entries by the risk classes
      in the tools' `risk_hints` applied to what each owns, then by how many cited files changed since their `verified` date
@@ -105,6 +112,13 @@ product bug written by an earlier author is a claim until you reproduce it: say 
      tear the world down. Exploring, exporting and the full gate belong to a change under development and to the gate
      above, not here. A scenario refused for its profile is drift in the skill's profile advice, not a failure to skip. A
      step that fails is drift in the skill or a tooling gap: fix it under the edit scope and run it again.
+3a. **Run skill.** Compare it with what it drives: every launch-config entry name and port it cites exists in
+   `suite.launch` (and no entry the checks need is missing from it); its status helper and other scripts exist and run;
+   its session inputs (project, targets, seed flags) match the runner's targets command (the `runner` tool's inventory)
+   and the seed skill; its world row names the backend skill's commands; its standing-data rules agree with the
+   manifest's `protected` lists (the stricter wins; report a conflict). Exercise it once: run the status helper, take the
+   row its table gives for this pass's live check, start only what that row needs, reuse what is already served by this
+   checkout, and stop what you started. A step that fails is drift in the skill: fix it and run it again.
 4. **Feature map.** Follow the audit procedure for the entries in scope: the backend half (the full gate above, never a
    second run), an optional source wave of read-only agents (one per entry, citing file and line, never driving a browser or
    editing), then the live pass. Order by risk: money, sign-in, deletion, shared data first. Mark a step "(seen)" with the
@@ -122,13 +136,12 @@ product bug written by an earlier author is a claim until you reproduce it: say 
 5. **Product skill.** The live pass of step 4 is its exercise: launch, login, drive, evidence and clean-up are used on
    every entry. A failure in launch, login or driving that is not the product's fault is drift in `verify-product-e2e` (or
    its references): fix it, re-drive the step, and carry on. A surface the harness cannot reach (no in-app browser, no
-   emulator) is *unreachable* with that prerequisite, never verified another way. Start servers only the way the project's
-   rules allow (its runner and launch config, never by hand); if the session cannot start them, the live pass is **not
-   run** and the layer is `blocked`. Look at the ports first (the project's status helper): if another chat or session
-   already holds the stack, do not start a second API on the same database, and do not accept a runner's automatic
-   alternative port for the API (the portal is wired to one address). Start your own isolated session (the project's
-   session runner, with its own database and Redis) instead, and stop it at the end. A test that trips a rate limit or
-   writes data does so in that session only.
+   emulator) is *unreachable* with that prerequisite, never verified another way. Pick and start the stack only through the
+   run skill: take the row its decision table gives (say which), and follow its rules for busy ports, a second API, data
+   the standing database lacks, and stopping. Where the run skill does not cover a case, follow the project's rule files
+   and the stricter reading: never a second API on one database and cache, never a runner's automatic alternative port
+   for an API a client is wired to. If the session cannot start what the row needs, the live pass is **not run** and the
+   layer is `blocked`. Writes and rate-limit trips go only where the run skill's data rules allow.
 6. **Triage each finding:**
    - an entry or skill that is wrong or thin: doc drift, fix it;
    - a behaviour a skill cannot drive: a tooling gap, fix the skill or tool and re-drive it;
@@ -173,8 +186,8 @@ never the operating system's temp folder (it differs between sandboxed and unsan
 
 - Never drive an instance you have not health-checked since it last did something surprising: run the tool's doctor
   against a world or server before the first drive, and again after any failed drive.
-- Writes go to a throwaway world or a local database the project names as free to use. Never a shared environment, never a
-  protected standing database, never a reseed of one.
+- Writes go to a throwaway world, a session, or a local database the run skill names as free to use, within its rules.
+  Never a shared environment, never a protected standing database, never a reseed of one.
 - Never weaken a step or an assertion to make it pass. A seed state the seed lacks fails the step; record why.
 - Check what an earlier author or a subagent wrote against the screen or the code: labels, environment facts and "this is
   broken" claims are all checked before they are kept.

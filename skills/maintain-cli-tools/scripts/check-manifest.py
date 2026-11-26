@@ -87,7 +87,7 @@ def main(argv):
         for key in ("check", "closeout", "tests"):
             if not fmap.get(key):
                 problems.append(f"suite.feature_map: missing {key}")
-        for key in ("seed", "backend", "product"):
+        for key in ("seed", "backend", "run", "product"):
             rel = suite.get("skills", {}).get(key)
             if not rel:
                 problems.append(f"suite.skills: missing {key}")

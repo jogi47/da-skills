@@ -3,13 +3,14 @@
 Each skill is a `SKILL.md` with YAML frontmatter (`name` and a `description` that names the project, the surface and when
 to reach for it; without frontmatter the skill never registers), written for the next agent who reads it cold, mid-task.
 Write them from the project's real docs and commands. The two current projects' versions
-(`verify-backend-e2e`, `verify-product-e2e`, `seed-test-data`, `feature-map`) are the model: read them in a sibling
+(`verify-backend-e2e`, `verify-product-e2e`, `seed-test-data`, `local-run`, `feature-map`) are the model: read them in a sibling
 workspace if one exists, and copy their shape, never their project facts.
 
 Rules for every skill below: no placeholders; every command, flag, path and label found or run (a harness tool name in
 brackets, or a device-only command this session cannot run, may stay but is marked unverified in the skill's text);
 the protected databases and environments from the manifest's `protected` list are named, with "never reseed the standing
-database"; the places other skills and map entries already point at (found by the dangling-reference search) all exist, under the
+database"; which stack a check runs on, how standing servers start, and the standing data's rules are `local-run`'s
+alone, so every other skill points at it (by section) and never restates them; the places other skills and map entries already point at (found by the dangling-reference search) all exist, under the
 exact headings and file names they cite, each covering every case the citing text mentions (for example a "Tools this
 skill needs" section that says what to do with no server runner, or a route section that says what to do when the
 databases are down); say that the repo's own
@@ -23,11 +24,15 @@ citations (the dangling-reference search) may add more; supply those too.
 
 - `verify-backend-e2e`: `When to use it`, `How to use it`, `What a world needs, and what to do when it will not start`,
   `Good to know`.
-- `verify-product-e2e`: `Think like a user`, `Pick the mode`, `Pick the layer for each sub-feature` (the audit procedure
-  calls this "the layer table"), `Tools this skill needs`, `Steps`, `Report`, `What is where`; and in `references/common.md`
-  the sections on which route to take (including the launch-config route and what to do when the databases are down),
-  second views, evidence and `Clean up`; the surface references hold "the driving notes".
+- `verify-product-e2e`: `Think like a user`, `Pick the mode`, `Tools this skill needs`, `Steps`, `What is where`. Add
+  `Pick the layer for each sub-feature` and `Report` as their own sections whenever anything cites them (an audit
+  procedure that says "the layer table" means the first); otherwise they may sit inside `Steps`. In
+  `references/common.md`: `How the skills fit together`, `Rules`, `Evidence` (second views inside it or in their own
+  section) and `Clean up`; the surface references hold "the driving notes". No route section: that is `local-run`.
 - `seed-test-data`: the state-to-module table, how to read the credentials file, and `When the state you need is not seeded`.
+- `local-run`: numbered sections, because other skills cite them by number: `1. Decide`, `2. Standing run`,
+  `3. Standing data`, `3a. When the standing data lacks what a step needs`, `4. Session: <Project>'s inputs`,
+  `5. Stop what you started`.
 
 ## `verify-backend-e2e` (layer 3)
 
@@ -38,7 +43,7 @@ citations (the dangling-reference search) may add more; supply those too.
 - **When to use it:** after finishing, while you work (cheap: unit tests and one call), before starting a bug (reproduce
   it), to review a diff.
 - **How to use it** (numbered): know what you touch (the map's plan command); start a world for anything that writes, one
-  per task, reused; find what to look at (impact, the map, the inventory's guards); run what exists, once, at the end;
+  per task, reused (`local-run` section 1 sends backend work here, and this skill owns the world); find what to look at (impact, the map, the inventory's guards); run what exists, once, at the end;
   explore beyond the scripts (other roles, bad input, a second tenant, parallel calls, an outage); keep what is worth
   keeping as a scenario before the world goes down; keep the map true (the closeout command); say what you did under the
   repo's review labels; tidy up and confirm no worlds remain.
@@ -66,15 +71,15 @@ citations (the dangling-reference search) may add more; supply those too.
 - **Tools this skill needs** (name each by what it does, with the current harness's tool names in brackets, for example
   Claude's Browser pane tools and `preview_start`; a name you could not confirm is marked unverified): an in-app browser for the screens (**no fallback**: without one, those sub-features are
   *unreachable*, and the skill says to check this before starting any server); a way to start the launch-config servers
-  and read their logs; a shell with the backend CLI and the container runtime; for the app, the emulator or simulator
+  and read their logs (`local-run` section 2 says how, and what to do with no server runner); a shell with the backend CLI and the container runtime; for the app, the emulator or simulator
   tool; a way to look at an image.
-- **Steps:** check tools; open the entry; pick the route (launch config against the standing local data in the main
-  checkout, or a seeded session for a missing state, a clean database or a worktree); drive it (surface references);
+- **Steps:** check tools; open the entry; pick and start the stack with `local-run` (its section 1, naming the row taken;
+  a state the standing data lacks follows its section 3a); drive it (surface references);
   record per sub-feature in the entry (mark "(seen)" with the date only after driving it); keep the map true (closeout and
   check; move `verified` only after a live pass over every sub-feature); clean up.
 - **Report:** per entry, verified with evidence, unreachable with the prerequisite, failed, what changed in the entry;
   never repeat passwords, tokens or member data.
-- **References:** `common.md` (how it fits the other skills, the rules, which route, second views, evidence, clean-up),
+- **References:** `common.md` (how it fits the other skills, the rules, second views, evidence, clean-up),
   and one file per family of surfaces, grouped from the manifest's `suite.surfaces` (plain names; you choose the families;
   a browser-driven family such as portal,
   admin console and website can share one file; the app gets its own), read only for the surface you are on. Evidence
@@ -88,8 +93,36 @@ citations (the dangling-reference search) may add more; supply those too.
 - **Body:** what the tool is and where it writes; the profiles and what each is for; a table from "the state a check needs"
   to the module that makes it, the logins it adds and how to confirm it; how to read the credentials file (names, never
   values); what to do when the state you need is not seeded (build it for one check, or add a module, and note it in
-  the map entry's traps); the rules (never seed the standing database; the shared profile every kept scenario assumes
-  changes only with them).
+  the map entry's traps); the rules (the standing database is seeded only as `local-run` section 3 allows, insert-only
+  where the tool has such a mode, and never reseeded; the shared profile every kept scenario assumes changes only with
+  them).
+
+## `local-run` (layer 4)
+
+- **Description:** decide how to run the project locally for any check, repro, demo or screenshot (a standing run from
+  the launch config against the local test database, a session, or a backend CLI world) and start the standing run; "the
+  one place that decision is made; read it before starting any server, session or world", naming the skills that call
+  it; operating a session is the global `test-session` skill's job.
+- **Intro:** the stacks, and that other skills never choose one themselves.
+- **1. Decide:** a first-match table (the check, the checkout, the stack): backend end-to-end work goes to a world; an
+  independent test pass with a report, a clean database, a state section 3a sends away, or a worktree or other branch
+  goes to a session (with the runner's checkout flag per repo changed); everything else in the main checkout is a
+  standing run. Say which row you took. A busy port held by this checkout is reused, not a reason for a session.
+- **2. Standing run:** the project's status helper (repos' branches, which ports answer), bringing up the local
+  database and cache, starting only the launch-config entries the check needs by name (with the harness's server
+  runner, or the entry's own command in the background with a log, never a command or port of your own), waiting for
+  ready, reusing a served port, the one-API-per-database-and-cache rule and the isolated entry for a second API, the app
+  entries that point at the local API, and the traps (hot reload, restarts from another session's edit).
+- **3. Standing data:** the local database as the agents' test bed: write freely through the screens or the CLI; seed it
+  only by adding (or not at all, if the seed tool refuses it); which logins must survive; never drop or recreate it.
+  This section owns those rules; other files point here.
+- **3a. When the standing data lacks what a step needs:** make it if a person could, otherwise switch to a session with
+  the smallest seed, then add "needs a session: <state>" to the entry's Traps; where logins live and how to list them
+  without values; local only.
+- **4. Session: <Project>'s inputs:** project, mode, targets, seed profile and modules (from `seed-test-data`), where
+  the session's logins come from; never fill a missing fixture from the standing database.
+- **5. Stop what you started:** standing servers you started (not ones you reused), sessions and worlds as their own
+  skills say, and `git status` on each repo for anything the run changed.
 
 ## `feature-map` (layer 1, the skill; entries are separate)
 
