@@ -48,8 +48,8 @@ and `tools/seed` and `iwx-seed` (seed) already do, and the contract `maintain-cl
   bad-input sweep. It prints what was skipped and why, and can write a report file.
 - **A route ledger.** Every route in the contract is reached by a scenario or an authorisation row, or is listed as pending
   or exempt with a reason. The pending list may only shrink. If authorisation rows alone can satisfy it, the ledger must also
-  say how many routes a behavioural scenario reaches, or the real gap is hidden (Inspection Worx hit this: 222 of 222
-  covered, 84 by scenarios).
+  say how many routes a behavioural scenario reaches, or the real gap is hidden: a matrix that reaches every route makes
+  the ledger read complete while most routes have no behavioural scenario.
 - **Change impact.** From a diff or a commit range to the routes and kept scenarios it can touch.
 - **Contract and authorisation checks.** A route added, removed or reshaped fails until reviewed and updated; a new route
   needs a hand-written authorisation row, never one derived from its own guard.

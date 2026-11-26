@@ -58,6 +58,10 @@ lacks one the pass needs, add it to the manifest after reading the tool's docs, 
    the project's workspace rules. Run the `health` command and stop on a failure that is not drift in the tool. Run
    `git -C <repo> fetch origin`, then check `git -C <repo> branch --show-current` and `git -C <repo> status --short`
    and compare with the manifest's `ship.base`; never build on someone else's uncommitted changes. Commands run from the tool's `run_from` folder, except `closeout`, which runs from the workspace root.
+   If the manifest has a `suite`, read its run skill (`suite.skills.run`, normally `local-run`) before starting any
+   server, world or session: it is the one place the project decides where a check runs, and this pass follows it. A
+   pass's writes always take that skill's throwaway-world row (or a session where it sends a state there), never the
+   standing run, even where the run skill lets everyday checks change standing data.
 2. **Measure (read-only).** Run each `gap_report` and `inventory` command, and read each `gap_sources` entry. Write the
    result to a scratch queue, one row per gap: what, where it was found, risk, size. Typical sources:
    - Seed tool: modules and profiles; states or logins the feature map or its entries say are "not seeded" or
@@ -128,8 +132,9 @@ one can be missing for the other.
 
 ## Hard rules
 
-- Writes go to a throwaway world or local database only. Never a shared environment, never anything in the tool's
-  `protected` list (the standing databases and environments), and never a reseed of one.
+- Writes go to a throwaway world or a session only. The standing local database is read-only to a pass: only read
+  commands and `--dry-run` reach it. Never a shared environment, never anything in the tool's `protected` list (the
+  standing databases and environments), and never a reseed of one.
 - Never weaken an assertion, delete a failing scenario or drop a seed state to make a run pass.
 - Never change a default that every world shares (a base module's data, or the profile the kept scenarios assume)
   without re-running every scenario that reads it. Prefer an added module or parameter.
