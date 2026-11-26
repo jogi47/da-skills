@@ -99,7 +99,7 @@ product bug written by an earlier author is a claim until you reproduce it: say 
      only when a failure is outside that set. Only a difference is yours.
    - **Compare.** (When a tool change made in step 2 is the cause, `maintain-cli-tools` step 6 has already refreshed the
      skill; compare finds drift from any other cause.) Check `verify-backend-e2e` against the CLI's current docs and code: command names, flags, profile names,
-     the world steps, the invocation form, and that it names every command this pass needs (doctor, a single-scenario
+     the world steps, the invocation form, and that it names every command this pass needs (a health check, a single-scenario
      replay with cleanup); a missing one is drift in the skill, to fix from the tool's docs.
    - **Exercise** (one real check, to prove the skill's own steps work). Choose the check: with a diff in question, a kept
      scenario the CLI's impact command names (impact on non-test files; the map's plan command over-matches on test files).
@@ -107,7 +107,7 @@ product bug written by an earlier author is a claim until you reproduce it: say 
      `<merge>^1..<merge>`); if impact names no scenario (a docs, test or tools-only merge), take the most recently added
      scenario file (`git log --diff-filter=A -1 -- <scenarios folder>`). Bring up a throwaway world with the smallest seed
      profile that holds every module the scenario's `seedModules` lists (the seed tool's module list says which profiles
-     hold each). Then: start the world, run the tool's doctor against it, replay the scenario with cleanup (the
+     hold each). Then: start the world, health-check it (see the hard rules), replay the scenario with cleanup (the
      scenario's own database steps are its stored-effect check; a separate database read needs a session started first),
      tear the world down. Exploring, exporting and the full gate belong to a change under development and to the gate
      above, not here. A scenario refused for its profile is drift in the skill's profile advice, not a failure to skip. A
@@ -184,8 +184,10 @@ never the operating system's temp folder (it differs between sandboxed and unsan
 
 ## Hard rules
 
-- Never drive an instance you have not health-checked since it last did something surprising: run the tool's doctor
-  against a world or server before the first drive, and again after any failed drive.
+- Never drive an instance you have not health-checked since it last did something surprising: run the tool's health
+  check against a world or server before the first drive, and again after any failed drive. That is its `doctor` verb
+  where it has one (`cmx doctor`); a CLI without one (`iwx`) uses its readiness command (`iwx wait --target <url>`)
+  plus one read-only call as a low-privilege login.
 - Writes go to a throwaway world, a session, or a local database the run skill names as free to use, within its rules.
   Never a shared environment, never a protected standing database, never a reseed of one.
 - Never weaken a step or an assertion to make it pass. A seed state the seed lacks fails the step; record why.
