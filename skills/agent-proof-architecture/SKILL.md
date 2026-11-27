@@ -1,6 +1,6 @@
 ---
 name: agent-proof-architecture
-description: Make a codebase safe for contributors who see only a few files (coding agents, new starters), so the locally obvious change is also the globally correct one and unsafe shortcuts fail with an error that names the right path. Five rules - the conventional path takes fewer decisions than a shortcut, forbidden dependencies fail mechanically, every durable value has one obvious writer, new product work adds isolated files rather than branches in shared roots, exceptions are narrow, explicit and reviewed. Use when setting up a repo, monorepo, package or feature area; when choosing folder layout, import rules, registries or who writes a piece of state; when reviewing a change or a repo for agent safety; and mid-task, before adding a case to a shared switch, registry or config, importing across a package or layer, or writing shared state from a new place. For one module's interface shape use codebase-design; to mine past agent mistakes use /correct.
+description: Make a codebase safe for contributors who see only a few files (coding agents, new starters), so the locally obvious change is also the globally correct one and unsafe shortcuts fail with an error that names the right path. Five rules - the conventional path takes fewer decisions than a shortcut, forbidden dependencies fail mechanically, every durable value has one obvious writer, new product work adds isolated files rather than branches in shared roots, exceptions are narrow, explicit and reviewed. Also checks the static baseline (strict compiler, type-aware lint, CI gates). Use when setting up a repo, package or feature area; when choosing folder layout, import rules, registries or who writes a piece of state; when reviewing a change or a repo for agent safety; and mid-task, before adding a case to a shared switch, registry or config, importing across a package or layer, or writing shared state from a new place. For one module's interface shape use codebase-design; to mine past agent mistakes use /correct.
 ---
 
 # Agent-proof architecture
@@ -112,7 +112,8 @@ A new repo has no code to protect yet, and every piece of machinery added now is
 2. Choose the owned-folder layout and the reserved file names.
 3. List the durable values (tables, stores, files, settings) and name the single writer for each. If there is a database, enforce the writers there too (roles and grants); it costs a few lines now and is hard to add later.
 4. Build one real reference feature for contributors to copy. A working feature beats a generator at this stage.
-5. Run the guardrails in CI, and record the rules in a short table in the agent instruction file (rule, what enforces it, where exceptions go). Exceptions start as a suppression on the line with a reason.
+5. Turn on the static baseline: every item marked *day one* in [references/static-baseline.md](references/static-baseline.md) for the stack (strict compiler, type-aware lint, warnings that fail, suppressions with reasons). Each is one line of config with no code to fix yet.
+6. Run the guardrails and the baseline in CI as required checks, and record the rules in a short table in the agent instruction file (rule, what enforces it, where exceptions go). Exceptions start as a suppression on the line with a reason.
 
 **Later, each with its trigger** (list these in the output with the trigger, and give no config for them yet):
 
@@ -129,7 +130,8 @@ Keep the document as short as the day-one list allows. Config for deferred items
 1. Read the folder layout, package manifests, any existing lint or architecture-rule config, and the agent instruction files.
 2. For each rule, look for its smells. Use git history to find shared roots: files touched by many unrelated feature commits, and files with frequent merge conflicts.
 3. For each finding, check whether a guardrail already covers it.
-4. Report using the format below, biggest payoff first. Payoff is roughly how many future changes the fix protects, divided by the effort to add it.
+4. Check the static baseline against [references/static-baseline.md](references/static-baseline.md): each item for the stack is on, partly on or off, with the config file or CI step that shows it. A check that runs only in a git hook or on a laptop is partly on.
+5. Report using the format below, biggest payoff first. Payoff is roughly how many future changes the fix protects, divided by the effort to add it. A missing CI gate usually comes first, because every other guardrail depends on it.
 
 ```markdown
 ## Agent-proof audit: <repo or area>
@@ -142,6 +144,9 @@ Keep the document as short as the day-one list allows. Config for deferred items
 
 ### Already well guarded
 <rules that already fail mechanically, so nobody re-adds them>
+
+### Static baseline
+<the table from references/static-baseline.md: items off or partly on, then one line naming the items fully on>
 ```
 
 Do not change code during an audit unless the user asks for fixes.
@@ -152,6 +157,7 @@ The aim is fewer wrong changes, not more machinery.
 
 - Prefer the cheapest guardrail that fails reliably: an existing compiler or linter setting beats a new tool, and a new tool beats a custom one.
 - Do not add a seam that only one adapter will ever fill (see `codebase-design`).
+- The static baseline is the cheapest guardrail of all: switch it on before writing any custom rule. Over existing code, turn a setting on with a ratchet rather than leaving it off.
 - Rules 2 and 3 pay off from the first commit. Rules 4 and 5 pay off as features and contributors grow, so their machinery waits for the triggers listed under "Designing".
 - In an audit, propose the smallest guardrail that closes each finding. A finding that one import rule fixes does not need a new package or framework.
 
