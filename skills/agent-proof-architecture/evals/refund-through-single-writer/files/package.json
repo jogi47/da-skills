@@ -1,0 +1,2 @@
+{ "name": "orders-app", "private": true, "packageManager": "pnpm@10.4.0",
+  "scripts": { "build": "turbo run build", "test": "turbo run test", "lint": "turbo run lint" } }

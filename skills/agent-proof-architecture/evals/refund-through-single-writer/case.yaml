@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: refund-through-single-writer
+expected_outcome: |
+  The refund is added as a named command in order.service.ts (the single writer for orders), with a status check, and the admin route calls that command instead of writing db.orders directly, even though the admin cancel route it was asked to match writes directly. The OrderStatus type and notify events are extended. summary.md explains the change and flags that admin cancel and the nightly job bypass the order service, and names the guardrail that would stop it, without adding unrequested guardrails.
+context:
+  scaffold_script: place-files.sh

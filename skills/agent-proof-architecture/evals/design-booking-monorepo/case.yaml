@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: design-booking-monorepo
+expected_outcome: |
+  A design (design.md) for the new monorepo with owned feature folders, discovery instead of central registries, import rules written as real config (for example dependency-cruiser or ESLint) whose error messages name the correct path, a single writer per table enforced in Postgres, a way to record and review exceptions, and copyable examples or generators. It stays proportionate rather than adding seams nobody needs.

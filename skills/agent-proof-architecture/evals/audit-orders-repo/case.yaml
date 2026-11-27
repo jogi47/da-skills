@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: audit-orders-repo
+expected_outcome: |
+  A written audit (audit.md) of the orders repo that finds the real problems: the web page importing API internals, packages/core importing from apps/api, orders written from admin routes and the nightly job instead of the order service, and shared roots (the notify switch, the central route table). Each finding has a concrete guardrail that fails mechanically, with an error message that names the right path, and findings are ranked. No code is changed.
+context:
+  scaffold_script: place-files.sh
