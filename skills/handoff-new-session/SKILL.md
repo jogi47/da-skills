@@ -35,8 +35,10 @@ copying. Include:
 6. Open questions.
 7. Paths and links to plans, issues, PRs, artifacts and relevant code; reference rather than copy.
 8. Skills to load and why.
-9. This source session's id/link, if available, and how the new session can read its transcript with
-   the host's tools. Never carry an older handoff's source forward as the current source.
+9. This source session's id/link, if available, how the new session can read its transcript with
+   the host's tools, and, where the host supports messaging between sessions, how to ask it one
+   precise question when the transcript does not answer (at the start or later in the work). Never
+   carry an older handoff's source forward as the current source.
 
 Do not include secrets, environment values or personal member data.
 
