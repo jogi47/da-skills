@@ -29,9 +29,9 @@ Characteristics:
 ```typescript
 // BAD: Tests implementation details
 test("checkout calls paymentService.process", async () => {
-  const mockPayment = jest.mock(paymentService);
+  const process = jest.spyOn(paymentService, "process");
   await checkout(cart, payment);
-  expect(mockPayment.process).toHaveBeenCalledWith(cart.total);
+  expect(process).toHaveBeenCalledWith(cart.total);
 });
 ```
 
@@ -39,7 +39,7 @@ Red flags:
 
 - Mocking internal collaborators
 - Testing private methods
-- Asserting on call counts/order
+- Asserting on call counts/order of internal collaborators
 - Test breaks when refactoring without behavior change
 - Test name describes HOW not WHAT
 - Verifying through external means instead of interface
@@ -57,6 +57,18 @@ test("createUser makes user retrievable", async () => {
   const user = await createUser({ name: "Alice" });
   const retrieved = await getUser(user.id);
   expect(retrieved.name).toBe("Alice");
+});
+```
+
+**Boundary calls are behavior.** At a real system boundary (see [mocking.md](mocking.md)), the call is what the caller cares about: the card is charged once, one email goes to the right address. Asserting on a boundary mock's calls and count is fine there; the red flag above is about your own internal collaborators.
+
+```typescript
+// GOOD: The boundary call is the observable behavior
+test("checkout charges the card once for the cart total", async () => {
+  const paymentClient = { charge: jest.fn().mockResolvedValue({ ok: true }) };
+  await checkout(cart, paymentClient);
+  expect(paymentClient.charge).toHaveBeenCalledTimes(1);
+  expect(paymentClient.charge).toHaveBeenCalledWith(1500);
 });
 ```
 
