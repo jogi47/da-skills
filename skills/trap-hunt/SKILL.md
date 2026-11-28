@@ -1,6 +1,7 @@
 ---
 name: trap-hunt
 description: Find and fix the traps in a project - code, pipelines and docs that lead a coding agent (or a new starter) to a wrong change, hidden technical debt, gotchas and needless complexity - whether they are written down somewhere or not. Runs a standard-library scanner over every repo in the project (silent catches, env fallbacks to other environments, soft CI gates, magic status codes, drifted copies, misspelt and duplicate names, giant files, dead config keys, docs that contradict code), keeps one register of confirmed traps and a baseline whose counts only go down, and fixes each trap at the highest level it can (architecture, type, check, test, note last) in the repo that owns it. Use when asked to audit a repo or workspace for traps, gotchas, tech debt or agent safety; when agents keep making the same mistake; before a PR to check a branch adds no new trap (`diff`); and when setting up a new project for it (`init`). One global skill; each project keeps only its data in docs/traps/.
+disable-model-invocation: true
 ---
 
 # Trap hunt
