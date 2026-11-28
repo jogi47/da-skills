@@ -22,7 +22,7 @@ model picker in the app, or `/model opus` in the terminal), then carry on only i
 
 ## 0a. Check the subagents
 
-This skill is for Claude Code. It uses two subagent definitions shipped in this skill's `agents/`
+This skill is for Claude Code. In T3 Code, use `/coordinator` instead. It uses two subagent definitions shipped in this skill's `agents/`
 folder: `sonnet-worker` and `sonnet-scout`. Claude Code loads subagents from `~/.claude/agents/` (or a
 project's `.claude/agents/`), not from a skill folder, so check that both are installed:
 
