@@ -1,4 +1,4 @@
-# Session brief template
+# Session brief template (Claude desktop app, Claude Code sessions)
 
 Fill every section; write "none" rather than leaving one out. The session has seen none of the
 coordinator's conversation, so name files by absolute path and state facts, not references to earlier
@@ -13,7 +13,7 @@ Start settings (passed to `start_session`, not written into the brief):
 - `model`: the current Sonnet id; `effort: "high"`. Change only when the user names another for this task.
 - `permission_mode`: omit, so the session inherits the coordinator's. Never pass a higher one.
 - Where it works: `use_worktree` omitted (main checkout) from a workspace folder that is its own repo;
-  `cwd` only when the user named the repo for this task (see SKILL.md section 8).
+  `cwd` only when the user named the repo for this task (see `../hosts/desktop.md`, Worktrees).
 
 ```
 ## Goal
