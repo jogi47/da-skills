@@ -94,7 +94,7 @@ class EnvironmentTests(unittest.TestCase):
             MODULE.VENV_DIR.name,
         )
         self.assertIn(MODULE.REQUIREMENTS_HASH, MODULE.VENV_DIR.name)
-        self.assertEqual(MODULE.REQUIREMENTS, ["faster-whisper==1.2.1"])
+        self.assertEqual(MODULE.REQUIREMENTS, ["faster-whisper==1.2.1", "av<19"])
 
     def test_managed_environment_is_detected_by_prefix(self):
         with tempfile.TemporaryDirectory() as directory:
