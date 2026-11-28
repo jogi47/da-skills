@@ -1,7 +1,7 @@
 ---
 name: client-page
 disable-model-invocation: true
-description: Publish a shareable Cloudflare page with anonymous saved answers, so people can respond without access to the creator's agent. Supports free pages, creator-uploaded media and an optional owner dashboard. Works with custom domains or workers.dev addresses and supports setup, publishing, updates, locking, archiving and reading answers. Use for public approval sheets, checklists, questionnaires, reports and trackers. Check for an existing site before setup and preserve its address, pages and saved answers.
+description: Host any HTML page on the user's own Cloudflare site at a private link anyone can open, with optional anonymous saved answers, for readers who have no access to Claude or claude.ai (clients, QA, testers, anyone else). The name is historical, so it covers more than client pages. Use to publish, update, lock, hide or delete such a page, read its answers, add screenshots or video, set up the site, or move an existing artifact (a progress page, approval sheet, checklist, questionnaire, report or tracker) onto it. Check for an existing site before setup and keep its address, pages and saved answers.
 ---
 
 # client-page

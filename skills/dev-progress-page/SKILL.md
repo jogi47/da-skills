@@ -116,6 +116,9 @@ once it is deployed.
    and update semantics; preserve existing attachments when updating. In Claude, publish with the
    Artifact tool: screenshots go in the `files` map as `"shots/<file>": "<absolute path>"`, and on an
    update send only new or changed screenshots, since files left out are kept.
+   When a reader has no access to Claude or claude.ai (a client contact, say), publish the rendered
+   HTML with the `client-page` skill instead: it uploads the relative `shots/` paths itself. That skill
+   is started only by the user, so suggest it rather than running it.
 5. From another session, pass the page's URL as `url` and read the live version first: someone may have
    published since. Merge their changes in rather than overwrite them.
 6. Give the resulting file or share link. Include a share key only when required by the selected host
